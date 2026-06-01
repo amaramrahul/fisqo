@@ -29,6 +29,9 @@ Fisqo is not an authoritative source for tax calculations. All computations are 
 3. Produce summary artifacts for dividends, capital gains, bank interest, and rent, each traceable to source line items.
 4. Generate an ITR JSON accepted by the Indian Income Tax portal.
 5. Guide the user through assisted filing on the portal.
+6. Collect advance tax challan details and populate Schedule IT (advance tax and self-assessment tax payments) in the ITR JSON.
+7. Guide the user through Schedule FA (foreign asset disclosure) and auto-derive Schedule FSI and Schedule TR from the foreign income data already collected.
+8. Extract TDS credit details from Form 16, Form 16A, and Form 26AS documents and populate Schedule TDS1, TDS2, and TCS in the ITR JSON.
 
 ### Non-Goals
 
@@ -36,6 +39,7 @@ Fisqo is not an authoritative source for tax calculations. All computations are 
 - Not for HUFs, firms, companies, or trusts.
 - No automated download of statements or automated submission to the IT portal in this release.
 - Old Tax Regime is not supported in this release; only the New Tax Regime is in scope.
+- Automated DTAA rate lookup is not performed in this release; the user must confirm the applicable relief percentage for each country when reviewing Schedule TR.
 
 ## Success Metrics
 
@@ -62,13 +66,13 @@ Fisqo is built for resident individual taxpayers in India whose returns are comp
 
 3. **Document classification.** Identify each input file by institution and document type so it can be routed to the right parsing logic.
 
-4. **Summary generation.** Produce consolidated summary data across six income categories — Dividends, Capital Gains, Bank Interest, Rent, Fixed Deposits, Other Income — each line item traceable back to the source statement. The UI presents these grouped **by institution**; the persisted output is a **single ODS file with one sheet per category**.
+4. **Summary generation.** Produce consolidated summary data across ten income sub-categories — Domestic Bank Interest, Other Domestic Interest, Foreign Interest, Domestic Dividends, Foreign Dividends, Domestic Capital Gains, Foreign Capital Gains, Rent, Other Domestic Income, Other Foreign Income — each line item traceable back to the source statement. The UI presents these grouped **by institution**; the persisted output is a **single ODS file with one sheet per category**.
 
-5. **Multi-year support.** Support filing for multiple financial years. Each financial year is an independent filing workflow with its own directory, state, and outputs. Re-opening an existing financial year's filing resumes it where the user left off.
+5. **Multi-year support.** Support filing for multiple financial years. Each financial year is an independent filing, consisting of four coordinated workflows (Personal Information, FY Income & Taxes, Schedule FA, and Summary & Filing), with its own directory, state, and outputs. Re-opening an existing financial year's filing resumes each workflow where it was left off.
 
 6. **Tax regime support.** Only the New Tax Regime is supported in this release. Old Tax Regime is out of scope.
 
-7. **FX conversion.** Apply correct INR conversion for all foreign-currency amounts per applicable rules (SBI TT buying rate on the prescribed date for the transaction type). Conversion rates used must be visible in the output.
+7. **FX conversion.** Apply correct INR conversion for all foreign-currency amounts per applicable rules (SBI TT buying rate on the prescribed date for the transaction type). Every row involving a foreign-currency amount must display the FX rate inline — currency pair, rate value, and the date from which the rate was sourced — so the conversion is fully traceable. The user can override the FX rate on any individual row; an override is visually flagged and persisted.
 
 8. **ITR JSON generation.** Produce a JSON file conforming to the current Income Tax portal schema, populated from the summary data. The JSON must validate against the official schema and be accepted on upload.
 
@@ -80,7 +84,7 @@ Fisqo is built for resident individual taxpayers in India whose returns are comp
 
 12. **Persisted settings scope.** Only LLM configuration is persisted as a global setting. PAN is scoped to a **tax user** (a single Fisqo installation can hold multiple tax users). All other settings (name, address, statements directory, etc.) are scoped to an individual filing.
 
-13. **Stage idempotency.** Each filing stage, once completed, is not re-executed on revisit. Re-execution requires an explicit user-initiated rescan, which warns the user that downstream stages will be reset.
+13. **Stage idempotency.** Each stage within a workflow, once completed, is not re-executed on revisit. Re-execution requires an explicit user-initiated rescan, which warns the user that downstream stages within the same workflow will be reset. Rescan dependencies are scoped within a workflow; a rescan in W2 does not affect W3. W4 generation (W4 Stage 2) is always re-runnable and reads the current completed state of W1, W2, and W3 at the time of execution.
 
 14. **Transparency of computations.** Every computed number must be inspectable — the user can see the inputs, the FX rate, and the formula used.
 
@@ -90,54 +94,276 @@ Fisqo is built for resident individual taxpayers in India whose returns are comp
 
 17. **Extensibility.** Adding support for a new statement format or institution should not require changes to core logic; it should be a matter of adding a prompt, example, or lightweight adapter.
 
+18. **TDS document parsing.** Recognise Form 16, Form 16A, Form 16B, and Form 26AS / AIS as document types in W2 Stage 1 (Document Discovery and Categorisation). Parse them for TDS/TCS deduction details (deductor name, TAN, section, amount deducted, amount deposited, assessment year). These feed Schedule TDS1 (salary TDS), Schedule TDS2 (non-salary TDS), and Schedule TCS in the ITR JSON.
+
+19. **Advance tax and self-assessment tax entry.** Provide a dedicated data-entry section for advance tax and self-assessment tax challans. Each entry captures: BSR code, challan serial number, date of deposit, amount, bank name, and payment type (advance tax / self-assessment tax / regular assessment tax). Where Form 26AS is available, pre-populate from it; otherwise the user enters manually. These feed Schedule IT in the ITR JSON.
+
+20. **Row-level notes.** Every data row in every data-entry stage — W2 Stages 2–16, and W3 Stages 3–13 — supports an optional free-text **Note** field. Notes are persisted alongside the row, exported into the ODS file as a dedicated Notes column on each sheet, and are visible during the W4 Stage 3 filing checklist. Notes do not affect computed values and are never sent to the LLM.
+
+21. **Schedule FA data collection.** Schedule FA (foreign asset disclosure) is handled in a dedicated separate workflow — **Workflow 3 (Schedule FA)** — with its own documents directory covering the Calendar Year (1 January – 31 December of the year preceding the assessment year). This is architecturally separate from Workflow 2, which covers the Financial Year (April – March). The two time periods overlap but are not identical: an asset may be held during the CY but disposed of before the FY begins, or acquired after the CY ends; the FA workflow makes no assumptions about the FY workflow's asset universe.
+
+Workflow 3 accepts its own set of statements (full-year CY statements from foreign banks and brokerages) and runs its own 14-stage pipeline: document discovery and categorisation, CY income extraction (foreign interest, dividends, capital gains, other income), and Schedule FA sub-table entry stages for all parts required by the ITR-2/ITR-3 schema (Parts A–G: foreign bank accounts, financial interests in foreign entities, immovable property, other capital assets, signing authority accounts, trusts, and other interests). The LLM pre-fills FA sub-table entries from the CY income data extracted in W3 Stages 3–6; the user reviews and completes remaining fields.
+
+**The UI must make the CY vs FY distinction explicit throughout Workflow 3.** All W3 stage pages carry a persistent "Schedule FA — Calendar Year CY20XX, 1 January – 31 December" banner. FX conversion for peak and closing balances uses the 31 December rate, confirmed in W3 Stage 1, distinct from the 31 March rate used in Workflow 2. Each FA sub-table stage has an explicit Reviewed confirmation gate before the workflow can be locked, given the steep Black Money Act penalties for omissions.
+
+Workflow 3 results are consumed by Workflow 4 (W4 Stage 2) for ODS and ITR JSON generation. If W3 is not locked when W4 generates the ITR JSON, Schedule FA entries are omitted and a notice is recorded.
+
+22. **Schedule FSI derivation.** Auto-derive Schedule FSI (foreign-source income) from the foreign-institution income rows collected in W2 Stages 4 (Foreign Interest), 6 (Foreign Dividends), 8 (Foreign Capital Gains), and 11 (Other Foreign Income). Group by country. For each country × income-head combination, show: income in foreign currency, INR equivalent (from the FX rate already computed), and tax paid in the source country (user-entered or extracted from statements). The user reviews and corrects before JSON generation.
+
+23. **Schedule TR derivation.** Auto-derive Schedule TR (tax relief) from Schedule FSI rows. For each FSI row where foreign tax was paid, propose a relief claim under Section 90 (DTAA country) or Section 91 (non-DTAA country). The applicable relief amount and rate are shown for user confirmation; the user may override. Final Schedule TR entries feed the ITR JSON.
+
+24. **Capital gains dual-mode computation.** For each institution with Capital Gains selected in W2 Stage 1 (or W3 Stage 2 for FA), the user specifies whether the institution's documents contain a **CG summary** (a pre-computed gains report from the broker) or a **transaction history** (raw buy/sell logs). In CG-summary mode, the LLM extracts the broker's pre-computed figures directly. In transaction-history mode, the LLM extracts each individual trade and Fisqo computes gains using FIFO matching, determines the holding period to classify STCG vs LTCG, and applies applicable rules (Section 111A/112A for domestic listed equities; grandfathering via FMV as on 31 January 2018 for LTCG on domestic listed equities acquired before that date; no indexation for foreign equities). In transaction-history mode, each gain row in the review table is expandable to show the full FIFO breakdown — the matched buy lot(s), acquisition cost, holding period, and the computed gain. The source mode is set once per institution in the relevant document discovery stage and applies to all rows from that institution; it cannot be changed at the row level. The row-level source indicator ("CG Statement" or "Computed from transactions") reflects the institution's chosen mode.
+
+## TDS and Tax Credits
+
+Tax Deducted at Source (TDS) and Tax Collected at Source (TCS) are withholding taxes that reduce the taxpayer's net liability. They are the most common source of pre-paid tax for salaried individuals and for those with interest or dividend income from Indian institutions. Correctly capturing all TDS/TCS entries is critical: any shortfall in the ITR relative to Form 26AS triggers a demand notice.
+
+### Source Documents
+
+| Document | Issued by | Covers |
+|---|---|---|
+| Form 16 Part A | Employer | Salary TDS — quarter-wise details, TAN, deposits |
+| Form 16 Part B | Employer | Salary breakdown, deductions, net taxable salary |
+| Form 16A | Any deductor other than an employer | TDS on interest, rent, professional fees, contract payments, etc. |
+| Form 16B | Property buyer | TDS deducted on immovable property purchase (Section 194IA) |
+| Form 26AS | Income Tax Department | Consolidated annual statement — all TDS, TCS, advance tax, self-assessment tax, and refunds linked to the PAN |
+| AIS / TIS | Income Tax Department | Annual Information Statement — extends Form 26AS with SFT data, dividends, securities transactions, and more |
+
+Fisqo treats Form 26AS / AIS as the **authoritative source** for TDS data. Where Form 16 / 16A / 16B are also uploaded, Fisqo extracts them and cross-checks against Form 26AS; any discrepancy is flagged for the user to resolve before proceeding.
+
+### TDS Categories and ITR Mapping
+
+| Category | Typical sections | ITR schedule |
+|---|---|---|
+| Salary TDS | 192 | Schedule TDS1 |
+| Non-salary TDS (interest, rent, professional fees, etc.) | 194A, 194I, 194J, 194C, others | Schedule TDS2 |
+| Tax Collected at Source | 206C series | Schedule TCS |
+
+### Data Fields Captured per Entry
+
+Each TDS row in W2 Stage 12 captures: deductor name, TAN, section code, financial year, gross amount on which TDS was deducted, TDS amount deducted, TDS amount deposited (as confirmed in Form 26AS), and an optional free-text Note.
+
+### Reconciliation
+
+If Form 16 / 16A amounts differ from Form 26AS, Fisqo surfaces the difference inline on the W2 Stage 12 row (e.g., "Form 16A: ₹12,000 deducted — Form 26AS: ₹11,500 deposited"). The user must resolve the discrepancy — typically by checking with the deductor — before confirming the row. The value carried into the ITR JSON is the Form 26AS deposited amount, as that is what the portal will validate against.
+
+### Advance Tax and Self-Assessment Tax
+
+Advance tax (paid quarterly by 15 June, 15 September, 15 December, 15 March) and self-assessment tax (paid at filing time) are captured separately in W2 Stage 13. Each challan entry specifies: BSR code, challan serial number, date of deposit, bank name, amount, and payment type. Form 26AS pre-populates these entries where available. These feed Schedule IT in the ITR JSON.
+
 ## Design And User Experience
 
 ### Workflows
 
-**Workflow 0: First-time application setup (one-time).** User launches Fisqo, browser opens to localhost UI, user enters LLM configuration (local model or cloud provider with API key). This is the only globally-persisted setting.
+A filing for a financial year consists of four coordinated workflows. Each workflow has its own stage list, its own completion status, and can be worked on independently once Workflow 1 (Personal Information) is complete. Each stage within a workflow is idempotent: revisiting shows the prior state without re-running. Re-execution requires an explicit **Rescan** action, which resets only that stage and downstream stages within the same workflow. Stages that are not applicable can be marked **Skipped**, which records a conscious bypass without blocking downstream stages. Per-stage status is: Not started / In progress / Complete / Skipped.
 
-**Workflow 1: Filing for a financial year.** From the dashboard, the user selects a tax user (or adds a new one with **Add new tax user**) and then either resumes an existing filing for a financial year or starts a new one. A filing has five sequential stages. Each stage is idempotent: revisiting it shows the prior state without re-running. Re-running requires an explicit **Rescan** action, which warns that downstream stages will be reset.
+---
 
-**Stage 1 — Basic settings.** User enters the name of the person filing, the address, and the path to the statements directory for this filing. The financial year and PAN are inherited from the tax user and the filing selection. Stored as filing-scoped state.
+### Workflow 1 — Personal Information
 
-**Stage 2 — Document discovery and categorization.** Fisqo sends all discovered documents to the LLM, which classifies them by institution. The UI presents documents grouped under institutions, with controls to:
+Covers identity, LLM configuration, and filing-scope settings. Designed to grow over time; new stages (deductions, bank refund details, Aadhaar linkage, etc.) will be added here without affecting other workflows. Must be complete before Workflows 2 or 3 can be started.
+
+**W1 Stage 1 — LLM Configuration.** User enters LLM configuration (local model or cloud provider with API key). This is the only globally-persisted setting, shared across all filings. Shown as pre-complete on subsequent filings if already configured.
+
+**W1 Stage 2 — Tax User.** User selects an existing tax user (PAN) or adds a new one. PAN is tax-user-scoped.
+
+**W1 Stage 3 — Filing Details.** User enters the name of the person filing, the address, financial year, and the path to the FY statements directory. PAN is inherited from the tax user. Stored as filing-scoped state.
+
+---
+
+### Workflow 2 — FY Income & Taxes
+
+Covers all Financial Year (April–March) income and all taxes paid — TDS deducted at source, advance tax and self-assessment tax challans, and foreign taxes paid in source countries. Also derives Schedule FSI and Schedule TR from the FY foreign income data. TDS entries feed Schedule TDS1/TDS2/TCS; advance tax challans feed Schedule IT; foreign taxes paid (entered per country in Schedule FSI) feed Schedule TR. All three are needed before the ITR JSON can be generated in Workflow 4.
+
+**W2 Stage 1 — Document Discovery and Categorisation.** Fisqo sends all discovered documents in the FY statements directory to the LLM, which classifies them by institution. The UI presents documents grouped under institutions, with controls to:
 
 - Create a new institution.
 - Move documents between institutions.
 - Exclude specific files or folders.
+- **Select income categories.** For each institution, a multi-select control lists the ten income sub-categories plus TDS / Tax Credits: Domestic Bank Interest, Other Domestic Interest, Foreign Interest, Domestic Dividends, Foreign Dividends, Domestic Capital Gains, Foreign Capital Gains, Rent, Other Domestic Income, Other Foreign Income, TDS / Tax Credits. The LLM pre-populates a suggested selection based on the institution type — for example, an Indian savings bank is pre-selected for Domestic Bank Interest; an Indian bank with FDs also gets Other Domestic Interest; an Indian brokerage or MF gets Domestic Dividends and Domestic Capital Gains; a foreign bank gets Foreign Interest; a foreign brokerage gets Foreign Interest, Foreign Dividends, and Foreign Capital Gains. The user can change the selection. Only categories checked for an institution are extracted from its documents in the corresponding income stages.
+- **Capital Gains source type.** For each institution that has Domestic Capital Gains or Foreign Capital Gains selected, a secondary control appears: **CG Summary** (the institution provides a pre-computed gains report) or **Transaction History** (raw buy/sell logs; Fisqo computes gains). The LLM suggests the most likely type based on the document. This sets the extraction mode for W2 Stages 7 and 8 for that institution.
 - Submit a custom prompt to the LLM (e.g., to refine classification logic).
 
-The user clicks **Next** to persist custom prompts and manual changes, then advance. The classification is not re-run on revisit unless the user clicks **Rescan**, which warns about downstream resets.
+Form 16, Form 16A, Form 16B, and Form 26AS / AIS are recognised as distinct document types. The LLM classifier groups them under a **Tax Documents** pseudo-institution created automatically when such documents are found; its pre-selected category is TDS / Tax Credits.
 
-**Stage 3 — Per-category review (grouped by institution).** Fisqo extracts the six categories — Dividends, Capital Gains, Bank Interest, Rent, FDs, Other Income — from the classified documents and presents each as a separate section, with rows grouped by institution. For each category section, the user can:
+W2 Stages 14–16 (Schedule FSI, Schedule TR, and Total Assets) are not driven by W2 Stage 1 category selection; they always appear and are individually user-skippable.
 
-- Submit a custom prompt and trigger a rescan of statements for that category.
-- Add, modify, or remove rows.
-- Add or remove institution-level entries.
+The user clicks **Next** to persist changes and advance. The classification is not re-run on revisit unless the user clicks **Rescan**, which warns about downstream resets.
 
-Added, removed, and modified entries are visually distinct. The user clicks **Next** to persist changes and advance. Like Stage 2, content is preserved on revisit unless the user explicitly rescans.
+**Common structure for income stages (W2 Stages 2–11).** Each income stage covers one sub-category. Only institutions with that sub-category selected in W2 Stage 1 appear; rows are grouped by institution. For each institution, the user can:
 
-**Stage 4 — ODS and JSON generation.** Fisqo produces:
+- Submit a custom LLM prompt and trigger a rescan (resets only this stage; warns if downstream stages — FSI, TR — derive from it).
+- Add, modify, or remove rows manually.
+- Add an optional free-text **Note** to any row (persisted, exported to ODS, never sent to the LLM).
 
-- A single ODS file with one sheet per category — Dividends, Capital Gains, Bank Interest, Rent, FDs, Other Income — grouped by category (the institution grouping is collapsed at this point; the exact column structure of the sheets is deferred to the technical design document).
-- The ITR JSON document, validated against the portal schema.
+Added, removed, and modified entries are visually distinct. The user clicks **Next** to persist changes and advance.
 
-The user can regenerate these files at this stage.
+**W2 Stage 2 — Domestic Bank Interest.** Savings and current account interest from Indian banks. Each row: institution, account type, interest amount (INR). Section 80TTA / 80TTB eligible amount is computed and shown. ITR line: Schedule OS.
 
-**Stage 5 — Manual filing.** Fisqo provides instructions for the user to:
+**W2 Stage 3 — Other Domestic Interest.** FD interest, RD interest, bond coupons, NSC accrual, post-office interest, interest on loans given, and other domestic fixed-income. Each row: institution, instrument type, amount (INR). ITR line: Schedule OS (interest other than savings).
+
+**W2 Stage 4 — Foreign Interest.** Interest from foreign bank accounts, foreign bonds, and other foreign fixed-income instruments. Each row: institution, country, currency, amount in foreign currency, FX rate (SBI TT buying rate and applicable date), INR equivalent. The FX rate is user-editable; an override is visually flagged. ITR line: Schedule OS. Feeds W2 Stage 14 (Schedule FSI).
+
+**W2 Stage 5 — Domestic Dividends.** Dividends from Indian listed equities and mutual funds. Each row: company/fund name, ISIN, dividend amount (INR), dividend date. ITR line: Schedule OS.
+
+**W2 Stage 6 — Foreign Dividends.** Dividends from foreign equities and ADRs/GDRs. Each row: company name, country, currency, dividend date, amount in foreign currency, FX rate (SBI TT buying rate and applicable date), INR equivalent. The FX rate is user-editable; an override is visually flagged. ITR line: Schedule OS. Feeds W2 Stage 14 (Schedule FSI).
+
+**W2 Stage 7 — Domestic Capital Gains.** Capital gains from Indian listed equities (STCG 111A / LTCG 112A), mutual funds, immovable property, and other domestic assets. ITR line: Schedule CG.
+
+The stage operates in the mode selected per institution in W2 Stage 1:
+
+*CG Summary mode* — the LLM extracts the broker's pre-computed figures. Each row: institution, asset name/ISIN, acquisition date, acquisition cost (INR), sale date, sale proceeds (INR), gain type (STCG/LTCG), gain amount (INR). Source indicator: "CG Statement."
+
+*Transaction History mode* — the LLM extracts individual trades; Fisqo computes gains using FIFO. For LTCG on listed equities acquired before 31 January 2018, the cost is capped at the FMV on that date (grandfathering). Each row shows the same fields as CG Summary mode, with an expandable section revealing the FIFO lot matching: matched buy lot(s), original acquisition date and cost, holding period, grandfathering adjustment if applicable, and the computed gain step by step. Source indicator: "Computed from transactions."
+
+The source mode is fixed per institution (set in W2 Stage 1) and applies to all rows for that institution. The user can add/edit/remove rows within the mode.
+
+**W2 Stage 8 — Foreign Capital Gains.** Capital gains from foreign equities and other foreign assets. ITR line: Schedule CG. Feeds W2 Stage 14 (Schedule FSI).
+
+The stage operates in the mode selected per institution in W2 Stage 1:
+
+*CG Summary mode* — the LLM extracts the broker's pre-computed figures. Each row: institution, asset name, country, acquisition date, acquisition cost in foreign currency, acquisition FX rate (SBI TT buying rate and applicable date), acquisition cost in INR, sale date, sale proceeds in foreign currency, sale FX rate (SBI TT buying rate and applicable date), sale proceeds in INR, gain type, computed gain in INR. Source indicator: "CG Statement."
+
+*Transaction History mode* — the LLM extracts individual trades; Fisqo computes gains using FIFO. FX conversion is applied separately at acquisition date and sale date. Each row shows the same fields as CG Summary mode, with an expandable section showing the FIFO lot matching and FX computation detail. Source indicator: "Computed from transactions."
+
+Both FX rates (acquisition and sale) are user-editable per row; an override is visually flagged. The source mode is fixed per institution (set in W2 Stage 1) and applies to all rows for that institution. The user can add/edit/remove rows within the mode.
+
+**W2 Stage 9 — Rent.** Rental income from house property. Each row covers one property: address, annual rent received, municipal taxes paid, home loan interest claimed under Section 24. Standard deduction of 30% is computed automatically. ITR line: Schedule HP.
+
+**W2 Stage 10 — Other Domestic Income.** Salary (if not captured by a Form 16 already in W2 Stage 12), freelance or professional income, gifts, and other domestic income not covered in W2 Stages 2–9. ITR line: Schedule OS / Schedule S as applicable.
+
+**W2 Stage 11 — Other Foreign Income.** RSU vesting income (perquisite), foreign salary, and other foreign-source income not covered in W2 Stages 4, 6, or 8. Each row: income type, country, currency, amount in foreign currency, FX rate (SBI TT buying rate and applicable date), INR equivalent. The FX rate is user-editable; an override is visually flagged. Feeds W2 Stage 14 (Schedule FSI).
+
+**W2 Stage 12 — TDS / Tax Credits.** Rows extracted from Form 16, Form 16A, Form 16B, and Form 26AS, grouped by deductor. Each row: deductor name, TAN, section code, gross amount subject to TDS, tax deducted, tax deposited, and optional note. The user can add, edit, or remove rows. Rows feed Schedule TDS1 (salary TDS), Schedule TDS2 (non-salary TDS), and Schedule TCS in the ITR JSON.
+
+**W2 Stage 13 — Advance Tax & Self-Assessment Tax.** Challan-based rows (not institution-grouped). Fields: BSR code, challan serial number, date, bank name, amount, payment type (advance tax / self-assessment tax / regular assessment tax), and optional note. Pre-populated from Form 26AS if available; otherwise blank for manual entry. Rows feed Schedule IT in the ITR JSON.
+
+**W2 Stage 14 — Schedule FSI.** Auto-derived from W2 Stages 4, 6, 8, and 11. Grouped by country. For each country × income-head combination: income in foreign currency, INR equivalent (from the FX rate already computed), and taxes paid in the source country (user-entered or extracted from statements). The user reviews and corrects entries before JSON generation.
+
+**W2 Stage 15 — Schedule TR.** Auto-derived from W2 Stage 14. For each FSI row where foreign tax was paid, Fisqo proposes a relief claim under Section 90 (DTAA country) or Section 91 (non-DTAA country). The applicable relief amount and rate are shown for user confirmation; the user may override. Final entries feed the ITR JSON.
+
+**W2 Stage 16 — Total Assets as of 31 March (Schedule AL).** Required in ITR-2/ITR-3 for taxpayers with total income exceeding ₹50 lakh; shown to all users with a note about the threshold so they can decide whether to complete it.
+
+Assets (cost as on 31 March): immovable assets (land, building — cost of acquisition); jewellery, bullion, archaeological collections, drawings, paintings, sculptures, and works of art; vehicles, yachts, boats, and aircraft; financial assets — shares and securities (Fisqo pre-fills portfolio value as of 31 March from W2 Stage 7/8 brokerage statements), insurance policies (sum assured), loans and advances given, bank balances (pre-filled from W2 Stage 2/3 closing balances), cash in hand, and other financial assets.
+
+Liabilities (as on 31 March): amount of liability in relation to the assets above.
+
+Each row has an optional Note field. Rows feed Schedule AL in the ITR JSON.
+
+---
+
+### Workflow 3 — Schedule FA
+
+Covers the Calendar Year (1 January – 31 December of the year preceding the assessment year) foreign asset disclosure. Fully independent from Workflow 2 — uses its own documents directory containing statements covering the CY. There is no data dependency between W2 and W3; the two workflows use different time periods and potentially different asset populations.
+
+A persistent banner — "Schedule FA — Calendar Year CY20XX, 1 January – 31 December" — appears on every W3 stage page to make the CY scope explicit throughout.
+
+Users with no foreign assets can declare nil at W3 Stage 2 (with a second affirmation), which marks all of Workflow 3 as Skipped and records a nil declaration for the ODS and ITR JSON.
+
+**W3 Stage 1 — FA Setup.** Confirm the Calendar Year (auto-derived from the filing's assessment year; not editable). Provide the path to the FA documents directory — a separate directory containing CY statements from foreign banks and brokerages. Confirm the December 31 FX rates per foreign currency (SBI TT buying rate as of 31 December CY20XX; pre-populated from SBI rate reference data if available; user-confirmable and overridable; labeled explicitly as "FX rate as of 31 December CY20XX" — distinct from the transaction-date and 31 March rates used in Workflow 2). Overrides are visually flagged and persisted.
+
+**W3 Stage 2 — FA Document Discovery and Categorisation.** Same controls as W2 Stage 1 but scoped to the FA documents directory. FA-specific institution categories:
+
+- **Foreign Bank Account** → FA Part A
+- **Financial Interest in Foreign Entity** (equity, debt, partnership interests) → FA Part B
+- **Other Capital Asset** (bonds, debentures, other securities not covered by Part B) → FA Part D
+- **Immovable Property Outside India** → FA Part C (manual, no LLM extraction needed)
+- **Signing Authority Account** → FA Part E (manual)
+- **Trust Outside India** → FA Part F (manual)
+- **Other Foreign Interest** → FA Part G
+
+The LLM pre-suggests categories based on institution type. Capital Gains source type (CG Summary / Transaction History) is set per institution for institutions with financial interests or other capital assets, as in W2.
+
+Nil-declaration shortcut: if the user has no foreign assets to report, they click "Declare nil — no foreign assets" and confirm; all of Workflow 3 is marked Skipped.
+
+**Common structure for FA income stages (W3 Stages 3–6).** Each stage covers one income sub-category for the Calendar Year (1 January – 31 December). Structure mirrors the corresponding W2 income stage but uses the CY date range. Only institutions with the relevant category selected in W3 Stage 2 appear; rows are grouped by institution. Same controls as W2 income stages: custom LLM prompt, rescan, add/edit/remove, optional Note field.
+
+**W3 Stage 3 — FA Foreign Interest (CY).** Interest from foreign bank accounts and bonds, 1 January – 31 December of the FA CY. Mirrors W2 Stage 4. Feeds W3 Stages 7 (FA Part A) and 10 (FA Part D).
+
+**W3 Stage 4 — FA Foreign Dividends (CY).** Dividends from foreign equities, 1 January – 31 December. Mirrors W2 Stage 6. Feeds W3 Stage 8 (FA Part B).
+
+**W3 Stage 5 — FA Capital Gains (CY).** Capital gains on foreign assets with transactions during the CY. Mirrors W2 Stage 8 (CG Summary / Transaction History modes per institution). Feeds W3 Stages 8 and 10.
+
+**W3 Stage 6 — FA Other Income (CY).** RSU vesting, foreign salary, and other CY foreign income not covered in W3 Stages 3–5. Mirrors W2 Stage 11. Advisory hints from rows without a known asset type are surfaced in W3 Stage 13 (FA Part G).
+
+**Common structure for FA sub-table stages (W3 Stages 7–13).** Each stage covers one Schedule FA sub-table (Parts A–G). Pre-filled from the relevant W3 income stages where possible; remaining fields require user completion. Every row has an optional Note field. Each stage has an explicit **Reviewed** confirmation gate — the user must mark it Reviewed before Workflow 3 can be locked. Given the steep Black Money Act penalties for omissions, the lock step in W3 Stage 14 also verifies that all sub-table stages are Reviewed.
+
+**W3 Stage 7 — FA Part A: Foreign Bank Accounts.** Pre-filled from W3 Stage 3. For each account, computes: peak balance during CY (highest end-of-day balance, derived from transaction data in Transaction History mode; manual entry required in CG Summary mode), closing balance as of 31 December, total CY interest credited — all in foreign currency and in INR at the 31 December rate confirmed in W3 Stage 1. All computed values shown with expandable computation trace. User completes: nature of account, SWIFT/BIC code, joint ownership flag. Reviewed gate.
+
+**W3 Stage 8 — FA Part B: Financial Interests in Foreign Entities.** Pre-filled from W3 Stages 4 and 5. Per holding: entity name, country, nature of interest (equity/debt/partnership — LLM-classified, user confirms), acquisition date, acquisition cost in INR, 31 December value in INR (from W3 Stage 5 position data; manual in CG Summary mode), CY income in INR. A manual "Add pre-existing holding" control captures assets held throughout the CY with no buy/sell activity during it. Reviewed gate.
+
+**W3 Stage 9 — FA Part C: Immovable Property Outside India.** Manual entry. Reviewed gate.
+
+**W3 Stage 10 — FA Part D: Other Capital Assets Outside India.** Pre-filled from W3 Stages 3–6 for assets not covered in FA Part B (bonds, debentures, other securities). Same structure as W3 Stage 8. Reviewed gate.
+
+**W3 Stage 11 — FA Part E: Accounts with Signing Authority.** Manual entry. Reviewed gate.
+
+**W3 Stage 12 — FA Part F: Trusts Outside India.** Manual entry. Reviewed gate.
+
+**W3 Stage 13 — FA Part G: Other Foreign Interests.** Manual entry with advisory hints from W3 Stage 6 rows that do not map to a known asset type. Reviewed gate.
+
+**W3 Stage 14 — FA Review and Lock.** Consolidated summary of all Parts A–G with entry counts and unreviewed-item highlights. User clicks **Confirm and Lock** to mark Workflow 3 complete. Locked data is read by Workflow 4 for ODS and ITR JSON generation.
+
+---
+
+### Workflow 4 — Summary & Filing
+
+Integration point. Reads the completed outputs of Workflows 1, 2, and 3 and produces the ITR artefacts. W4 Stage 2 (generation) is blocked until W1 and W2 are Complete and W3 is either Complete or Skipped; the user can open Workflow 4 at any time to check status.
+
+**W4 Stage 1 — Pre-filing Review.** Shows the completion status of Workflows 1, 2, and 3 with a summary of key computed numbers — total income by category, total TDS, total advance tax, Schedule FA entry counts. Any workflow that is In Progress or Not Started is highlighted with a direct link to resume it. The user can proceed even if W3 is incomplete; they receive a warning that the ITR JSON will not include Schedule FA data.
+
+**W4 Stage 2 — ODS and JSON Generation.** Fisqo produces:
+
+- A single ODS file with one sheet per category — Domestic Bank Interest, Other Domestic Interest, Foreign Interest, Domestic Dividends, Foreign Dividends, Domestic Capital Gains, Foreign Capital Gains, Rent, Other Domestic Income, Other Foreign Income, TDS Credits, Advance Tax Challans, Schedule FA (labeled "Calendar Year CY20XX — 1 January – 31 December"), Schedule FSI, Schedule TR, Total Assets (Schedule AL) — grouped by category (institution grouping is collapsed at this point; exact column structure is deferred to the technical design document). Each sheet includes a Notes column. If W3 is not locked, the Schedule FA sheet records a nil declaration or an "incomplete — Schedule FA not filed" notice.
+- The ITR JSON document, validated against the portal schema, including Schedule TDS1, TDS2, TCS, Schedule IT, Schedule FA, Schedule FSI, Schedule TR, and Schedule AL. If W3 is not locked, Schedule FA entries are omitted and a note records the omission.
+
+The user can regenerate these files at any time from this stage.
+
+**W4 Stage 3 — Manual Filing.** Fisqo provides instructions for the user to:
 
 1. Open the generated JSON in the official Indian IT Department application (or edit it manually) to make any adjustments the portal requires.
 2. Follow a step-by-step checklist to upload the JSON, verify each schedule on the portal, and complete the submission and e-verification.
 
 ### UI Surfaces
 
-- **Setup / Settings page** — LLM configuration (the only globally-persisted setting).
-- **Dashboard** — filings grouped by tax user (PAN). Each tax user section lists the financial years for which a filing has been initiated, with progress per stage, plus a control to start a filing for a new financial year. An **Add new tax user** button at the top of the dashboard prompts for a PAN and creates a new tax user section.
-- **Stage 1 page** — basic settings form (name, address, statements directory). Financial year and PAN are displayed read-only.
-- **Stage 2 page** — file explorer grouped by institution, with reclassify / exclude / custom-prompt controls.
-- **Stage 3 pages** — one per category (Dividends, Capital Gains, Bank Interest, Rent, FDs, Other Income), each with institution-grouped rows, custom-prompt and rescan controls, and edit/add/remove with visual change indicators.
-- **Stage 4 page** — ODS and JSON generation status, downloads, and regenerate control.
-- **Stage 5 page** — guided manual-filing checklist.
+**Dashboard** — top-level view, grouped by tax user (PAN). An **Add new tax user** button at the top prompts for a PAN and creates a new tax user section. Each tax user section lists the financial years for which a filing has been initiated. For each filing, four workflow cards are shown:
+
+```
+[W1] Personal Information          ● Complete
+[W2] FY Income & Taxes             ◑ In Progress  (Stage 7 of 16)
+[W3] Schedule FA — CY20XX          ○ Not started
+[W4] Summary & Filing              🔒 Awaiting W1, W2, W3
+```
+
+Each card shows the workflow name, current status, and (if in progress) the current stage. W4 shows "Ready to generate" when W1 and W2 are Complete and W3 is Complete or Skipped; otherwise it shows "Awaiting" with the blocking workflows listed. A **Start new filing** control initiates a new financial year under the same tax user.
+
+**Workflow 1 pages:**
+- **W1 Stage 1** — LLM configuration: API key / local model setup.
+- **W1 Stage 2** — Tax user: PAN selection or creation.
+- **W1 Stage 3** — Filing details: name, address, financial year, FY statements directory path.
+
+**Workflow 2 pages:**
+- **W2 Stage 1** — File explorer grouped by institution, with reclassify / exclude / category-selection / CG-source-type / custom-prompt controls. Category selection determines which income sub-categories W2 Stages 2–11 will extract from each institution's documents.
+- **W2 Stages 2–11** — one page per income sub-category (Domestic Bank Interest, Other Domestic Interest, Foreign Interest, Domestic Dividends, Foreign Dividends, Domestic Capital Gains, Foreign Capital Gains, Rent, Other Domestic Income, Other Foreign Income). Each page has institution-grouped rows, custom-prompt and rescan controls, add/edit/remove with visual change indicators, and an optional Note field per row.
+- **W2 Stage 12** — TDS / Tax Credits: deductor-grouped rows, add/edit/remove, Note field.
+- **W2 Stage 13** — Advance Tax & Self-Assessment Tax: challan rows, add/edit/remove, Note field.
+- **W2 Stage 14** — Schedule FSI: country-grouped review and correction of auto-derived foreign-source income, including foreign taxes paid per country/income-head.
+- **W2 Stage 15** — Schedule TR: per-country/income-head relief confirmation with Section 90/91 proposal and user override.
+- **W2 Stage 16** — Total Assets (Schedule AL): structured entry of assets and liabilities as of 31 March, with LLM-pre-filled bank and securities values and Note field per row.
+
+Within Workflow 2, stages are grouped in the sidebar: **Income** (Stages 2–11), **Taxes Paid** (Stages 12–13), **Foreign Schedules** (Stages 14–15), **Assets** (Stage 16).
+
+**Workflow 3 pages:**
+- **W3 Stage 1** — FA setup: FA documents directory path, December 31 FX rate confirmation per currency.
+- **W3 Stage 2** — FA document discovery and categorisation: same controls as W2 Stage 1 with FA-specific categories. Nil-declaration shortcut.
+- **W3 Stages 3–6** — one page per FA income sub-category (FA Foreign Interest, FA Foreign Dividends, FA Capital Gains, FA Other Income), all scoped to the Calendar Year. Same row structure as the corresponding W2 income stages. Persistent CY banner on every page.
+- **W3 Stages 7–13** — one page per Schedule FA sub-table (Parts A–G), each labeled "Calendar Year CY20XX". LLM-pre-filled from W3 Stages 3–6 where possible. Expandable computation trace for balance and income values. Note field per row. Explicit Reviewed confirmation gate per stage.
+- **W3 Stage 14** — FA Review and Lock: entry-count summary per Part, unreviewed-item warnings, Confirm and Lock button.
+
+**Workflow 4 pages:**
+- **W4 Stage 1** — Pre-filing review: completion status of W1/W2/W3 with key computed totals and direct links to incomplete workflows.
+- **W4 Stage 2** — ODS and JSON generation: status, downloads, and regenerate control.
+- **W4 Stage 3** — Manual filing checklist: step-by-step portal upload and e-verification guidance.
 
 ## Dependencies
 
