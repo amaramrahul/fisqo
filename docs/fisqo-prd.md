@@ -202,11 +202,11 @@ The user clicks **Next** to persist changes and advance. The classification is n
 
 Added, removed, and modified entries are visually distinct. The user clicks **Next** to persist changes and advance.
 
-**W2 Stage 2 — Domestic Salary.** Salary income extracted from Form 16 Part B, grouped by employer. Stage is skippable for users with no Indian employer. For each employer, the LLM extracts: Employer Name, TAN, Nature of employer, Address; salary components under Section 17(1) (Basic, DA, HRA, LTA, Conveyance, Gratuity, Leave Encashment, Fees/Commission, Others) with amounts; perquisites under Section 17(2) (Accommodation, Cars, ESOP, Other benefits, etc.) with amounts; profit in lieu of salary under Section 17(3) if applicable; exempt allowances under Section 10 (HRA, LTA, etc.) with amounts; Standard Deduction (₹75,000 for FY 2025-26, auto-applied); net taxable salary (auto-calculated and shown). The user can add, edit, or remove rows per component. ITR line: Schedule S.
+**W2 Stage 2 — Domestic Salary.** Salary income extracted from Form 16 Part B, grouped by employer. Stage is skippable for users with no Indian employer. For each employer, the LLM extracts: Employer Name, TAN, Nature of employer, Address; salary components under Section 17(1) (Basic, DA, HRA, LTA, Conveyance, Gratuity, Leave Encashment, Fees/Commission, Others) with amounts; perquisites under Section 17(2) (Accommodation, Cars, ESOP, Other benefits, etc.) with amounts; profit in lieu of salary under Section 17(3) if applicable; exempt allowances under Section 10 (HRA, LTA, etc.) with amounts; Employer's contribution to NPS u/s 80CCD(2) (extracted from Form 16 Part B; auto-populates Schedule VI-A in the ITR JSON); Standard Deduction (₹75,000 for FY 2025-26, auto-applied); net taxable salary (auto-calculated and shown). The user can add, edit, or remove rows per component. ITR line: Schedule S.
 
-**W2 Stage 3 — Domestic Bank Interest.** Savings and current account interest from Indian banks. Each row: institution, account type, interest amount (INR). Section 80TTA / 80TTB eligible amount is computed and shown. ITR line: Schedule OS.
+**W2 Stage 3 — Domestic Bank Interest.** Savings and current account interest from Indian banks. Each row: institution, account type, interest amount (INR). Also includes interest on Income Tax refunds (sourced from AIS; maps to portal OS 1(b)(iii)). ITR line: Schedule OS 1(b)(i) for savings bank, 1(b)(ii) for deposits, 1(b)(iii) for IT refund interest.
 
-**W2 Stage 4 — Other Domestic Interest.** FD interest, RD interest, bond coupons, NSC accrual, post-office interest, interest on loans given, and other domestic fixed-income. Each row: institution, instrument type, amount (INR). ITR line: Schedule OS (interest other than savings).
+**W2 Stage 4 — Other Domestic Interest.** FD interest, RD interest, bond coupons, NSC accrual, post-office interest, interest on loans given, and other domestic fixed-income. Also includes tax-exempt interest: PPF interest, EPF interest (to the extent taxable portions are excluded), and SSY interest (Sukanya Samriddhi Yojana — minor child's account). Each row: institution, instrument type, amount (INR), and whether the interest is taxable or exempt. Taxable rows map to Schedule OS 1(b)(ix); exempt rows (PPF, EPF, SSY) map to Schedule EI Field 1 in the ITR JSON.
 
 **W2 Stage 5 — Foreign Interest.** Interest from foreign bank accounts, foreign bonds, and other foreign fixed-income instruments. Each row: institution, country, currency, amount in foreign currency, FX rate (SBI TT buying rate and applicable date), INR equivalent. The FX rate is user-editable; an override is visually flagged. ITR line: Schedule OS. Feeds W2 Stage 17 (Schedule FSI).
 
@@ -285,9 +285,9 @@ Auto-computed and shown (not user-entered): Annual value, Standard deduction (30
 
 **W2 Stage 16 — Advance Tax & Self-Assessment Tax.** Challan-based rows (not institution-grouped). Fields: BSR code, challan serial number, date, bank name, amount, payment type (advance tax / self-assessment tax / regular assessment tax), and optional note. Pre-populated from Form 26AS if available; otherwise blank for manual entry. Rows feed Schedule IT in the ITR JSON.
 
-**W2 Stage 17 — Schedule FSI.** Auto-derived from W2 Stages 5, 7, 9, and 14. Grouped by country. For each country × income-head combination: income in foreign currency, INR equivalent (from the FX rate already computed), and taxes paid in the source country (user-entered or extracted from statements). The user reviews and corrects entries before JSON generation.
+**W2 Stage 17 — Schedule FSI.** Auto-derived from W2 Stages 5, 7, 9, and 14. One entry per country. For each country, the user confirms: Taxpayer Identification Number in source country (TIN abroad — e.g. US SSN; mandatory on portal); and for each income head (Salary / House Property / Capital Gains / Other Sources) where income was earned: income in foreign currency, INR equivalent (from the FX rate already computed), taxes paid in the source country (user-entered or extracted from statements), tax payable in India on such income under normal provisions (Fisqo computes from income and applicable slab; user-confirmable), tax relief available (auto: lower of tax paid abroad or tax payable in India), and relevant article of DTAA if relief is claimed u/s 90 or 90A (optional text per income head). The user reviews and corrects entries before JSON generation.
 
-**W2 Stage 18 — Schedule TR.** Auto-derived from W2 Stage 17. For each FSI row where foreign tax was paid, Fisqo proposes a relief claim under Section 90 (DTAA country) or Section 91 (non-DTAA country). The applicable relief amount and rate are shown for user confirmation; the user may override. Final entries feed the ITR JSON.
+**W2 Stage 18 — Schedule TR.** Auto-derived from W2 Stage 17. The summary table (country, TIN, total taxes paid abroad, total relief available) is auto-populated from Schedule FSI. For each country row, the user confirms the relief section (90 / 90A / 91). Additionally: Was any tax paid outside India, on which relief was allowed in India, subsequently refunded or credited by the foreign tax authority? (Yes/No; default No). If Yes: amount of tax refunded (₹) and assessment year in which the relief was originally allowed. Final entries feed the ITR JSON.
 
 **W2 Stage 19 — Total Assets as of 31 March (Schedule AL).** Required in ITR-2/ITR-3 for taxpayers with total income exceeding ₹50 lakh; shown to all users with a note about the threshold so they can decide whether to complete it.
 
@@ -311,13 +311,16 @@ Users with no foreign assets can declare nil at W3 Stage 2 (with a second affirm
 
 **W3 Stage 2 — FA Document Discovery and Categorisation.** Same controls as W2 Stage 1 but scoped to the FA documents directory. FA-specific institution categories:
 
-- **Foreign Bank Account** → FA Part A
-- **Financial Interest in Foreign Entity** (equity, debt, partnership interests) → FA Part B
-- **Other Capital Asset** (bonds, debentures, other securities not covered by Part B) → FA Part D
-- **Immovable Property Outside India** → FA Part C (manual, no LLM extraction needed)
+- **Foreign Depository Account** (bank savings/current accounts) → FA Part A1
+- **Foreign Custodial Account** (brokerage/securities accounts) → FA Part A2
+- **Foreign Equity / Debt Interest in Entity** (equity shares, bonds, debt instruments in a foreign entity) → FA Part A3
+- **Foreign Cash Value Insurance / Annuity Contract** → FA Part A4 (manual)
+- **Financial Interest in Foreign Entity** (beneficial interest, partnership interests) → FA Part B
+- **Immovable Property Outside India** → FA Part C (manual)
+- **Other Capital Asset Outside India** (bonds, debentures, other securities not in A3 or B) → FA Part D
 - **Signing Authority Account** → FA Part E (manual)
 - **Trust Outside India** → FA Part F (manual)
-- **Other Foreign Interest** → FA Part G
+- **Other Foreign Interest / Income** → FA Part G
 
 The LLM pre-suggests categories based on institution type. Capital Gains source type (CG Summary / Transaction History) is set per institution for institutions with financial interests or other capital assets, as in W2.
 
@@ -333,21 +336,31 @@ Nil-declaration shortcut: if the user has no foreign assets to report, they clic
 
 **W3 Stage 6 — FA Other Income (CY).** RSU vesting, foreign salary, and other CY foreign income not covered in W3 Stages 3–5. Mirrors W2 Stage 11. Advisory hints from rows without a known asset type are surfaced in W3 Stage 13 (FA Part G).
 
-**Common structure for FA sub-table stages (W3 Stages 7–13).** Each stage covers one Schedule FA sub-table (Parts A–G). Pre-filled from the relevant W3 income stages where possible; remaining fields require user completion. Every row has an optional Note field. Each stage has an explicit **Reviewed** confirmation gate — the user must mark it Reviewed before Workflow 3 can be locked. Given the steep Black Money Act penalties for omissions, the lock step in W3 Stage 14 also verifies that all sub-table stages are Reviewed.
+**Common structure for FA sub-table stages (W3 Stages 7–13).** Each stage covers one or more Schedule FA sub-tables. Pre-filled from the relevant W3 income stages where possible; remaining fields require user completion. Every row has an optional Note field. For all foreign-currency amounts, Fisqo displays the original foreign currency amount, the SBI TT buying rate as of 31 December CY (confirmed in W3 Stage 1), and the INR equivalent; the portal is populated with the INR value. Each stage has an explicit **Reviewed** confirmation gate — the user must mark it Reviewed before Workflow 3 can be locked. Each sub-table stage also generates a portal-compatible CSV for direct upload to the corresponding Schedule FA section. Given the steep Black Money Act penalties for omissions, the lock step in W3 Stage 14 also verifies that all sub-table stages are Reviewed.
 
-**W3 Stage 7 — FA Part A: Foreign Bank Accounts.** Pre-filled from W3 Stage 3. For each account, computes: peak balance during CY (highest end-of-day balance, derived from transaction data in Transaction History mode; manual entry required in CG Summary mode), closing balance as of 31 December, total CY interest credited — all in foreign currency and in INR at the 31 December rate confirmed in W3 Stage 1. All computed values shown with expandable computation trace. User completes: nature of account, SWIFT/BIC code, joint ownership flag. Reviewed gate.
+**W3 Stage 7 — FA Parts A1 & A2: Foreign Depository and Custodial Accounts.**
 
-**W3 Stage 8 — FA Part B: Financial Interests in Foreign Entities.** Pre-filled from W3 Stages 4 and 5. Per holding: entity name, country, nature of interest (equity/debt/partnership — LLM-classified, user confirms), acquisition date, acquisition cost in INR, 31 December value in INR (from W3 Stage 5 position data; manual in CG Summary mode), CY income in INR. A manual "Add pre-existing holding" control captures assets held throughout the CY with no buy/sell activity during it. Reviewed gate.
+*Part A1 — Foreign Depository Accounts (bank savings/current accounts):* Pre-filled from W3 Stage 3 (interest rows). Per account: country, institution name, address, ZIP code, account number, status (open/closed), account opening date, peak balance during CY (INR), closing balance as of 31 December (INR), gross interest credited during CY (INR). Reviewed gate.
 
-**W3 Stage 9 — FA Part C: Immovable Property Outside India.** Manual entry. Reviewed gate.
+*Part A2 — Foreign Custodial Accounts (brokerage/securities accounts):* Pre-filled from W3 Stages 4 and 5 (dividend and capital gains rows). Per account: same fields as A1 plus nature of amount (dividends / interest / other) and gross amount paid/credited (INR). Reviewed gate.
 
-**W3 Stage 10 — FA Part D: Other Capital Assets Outside India.** Pre-filled from W3 Stages 3–6 for assets not covered in FA Part B (bonds, debentures, other securities). Same structure as W3 Stage 8. Reviewed gate.
+**W3 Stage 8 — FA Parts A3 & B: Foreign Equity/Debt Interest and Financial Interests.**
 
-**W3 Stage 11 — FA Part E: Accounts with Signing Authority.** Manual entry. Reviewed gate.
+*Part A3 — Foreign Equity and Debt Interest in any entity:* Pre-filled from W3 Stages 4 and 5 for holdings in foreign entities tracked with balance history. Per holding: country, entity name, address, ZIP, nature of entity, date of acquiring interest, initial value of investment (INR), peak value during CY (INR), closing balance as of 31 December (INR), total gross amount paid/credited during CY (INR), total gross proceeds from sale/redemption during CY (INR). Reviewed gate.
 
-**W3 Stage 12 — FA Part F: Trusts Outside India.** Manual entry. Reviewed gate.
+*Part B — Financial Interest in any Entity (beneficial interest, partnership):* Pre-filled from W3 Stages 4 and 5 for holdings with beneficial or partnership interests. Per holding: country, ZIP, nature of entity, entity name, address, nature of interest, date since held, total investment at cost (INR), income accrued during CY (INR), nature of income, and — since this income must also be declared elsewhere in the return — the schedule where offered (Schedule OS / CG / Salary) and item number of that schedule. A manual "Add pre-existing holding" control captures interests held throughout the CY with no transactions during it. Reviewed gate.
 
-**W3 Stage 13 — FA Part G: Other Foreign Interests.** Manual entry with advisory hints from W3 Stage 6 rows that do not map to a known asset type. Reviewed gate.
+**W3 Stage 8A — FA Part A4: Foreign Cash Value Insurance / Annuity Contracts.** Fully manual, skippable for users who hold no such contracts. Per contract: country, name of financial institution, address, ZIP, date of contract, cash value or surrender value as of 31 December (INR), total gross amount paid/credited during CY (INR). Reviewed gate. Generates portal-compatible CSV.
+
+**W3 Stage 9 — FA Part C: Immovable Property Outside India.** Manual entry per property. Per property: country, ZIP, address of property, ownership type, date of acquisition, total investment at cost (INR), income derived during CY (INR), nature of income, and — since this income must also be declared elsewhere in the return — the schedule where offered and item number of that schedule. Reviewed gate.
+
+**W3 Stage 10 — FA Part D: Other Capital Assets Outside India.** Pre-filled from W3 Stages 3–6 for assets not covered in FA Parts A3 or B (bonds, debentures, other securities). Per asset: country, ZIP, nature of asset, ownership type, date of acquisition, total investment at cost (INR), income derived during CY (INR), nature of income, schedule where offered, and item number of that schedule. Reviewed gate.
+
+**W3 Stage 11 — FA Part E: Accounts with Signing Authority.** Manual entry. Per account: institution name, address, country, ZIP, account holder name, account number, peak balance/investment during CY (INR), whether income accrued is taxable in the user's hands (Yes/No). Reviewed gate.
+
+**W3 Stage 12 — FA Part F: Trusts Outside India.** Manual entry. Per trust: country, ZIP, trust name, address, trustee name(s), trustee address(es), settlor name, settlor address, beneficiary name(s), beneficiary address(es), date since position held, whether income derived is taxable in the user's hands (Yes/No). Reviewed gate.
+
+**W3 Stage 13 — FA Part G: Other Foreign Income.** Manual entry with advisory hints from W3 Stage 6 rows that do not map to a known asset type. Per entry: country, ZIP, name and address of person from whom derived, income derived (INR), nature of income, whether taxable in the user's hands (Yes/No). Reviewed gate.
 
 **W3 Stage 14 — FA Review and Lock.** Consolidated summary of all Parts A–G with entry counts and unreviewed-item highlights. User clicks **Confirm and Lock** to mark Workflow 3 complete. Locked data is read by Workflow 4 for ODS and ITR JSON generation.
 
@@ -401,17 +414,17 @@ Each card shows the workflow name, current status, and (if in progress) the curr
 - **W2 Stages 13–14** — Other Domestic Income; Other Foreign Income.
 - **W2 Stage 15** — TDS / Tax Credits: deductor-grouped rows, add/edit/remove, Note field.
 - **W2 Stage 16** — Advance Tax & Self-Assessment Tax: challan rows, add/edit/remove, Note field.
-- **W2 Stage 17** — Schedule FSI: country-grouped review and correction of auto-derived foreign-source income, including foreign taxes paid per country/income-head.
-- **W2 Stage 18** — Schedule TR: per-country/income-head relief confirmation with Section 90/91 proposal and user override.
+- **W2 Stage 17** — Schedule FSI: one entry per country — Taxpayer Identification Number (TIN abroad), per-income-head income/tax-paid/tax-payable-in-India/relief fields, and relevant DTAA article per head; auto-derived from W2 Stages 5, 7, 9, 14 with user review.
+- **W2 Stage 18** — Schedule TR: per-country relief section (90/90A/91) confirmation; refunded foreign tax flag (Yes/No) with amount and assessment year if Yes.
 - **W2 Stage 19** — Total Assets (Schedule AL): structured entry of assets and liabilities as of 31 March, with LLM-pre-filled bank and securities values and Note field per row.
 
 Within Workflow 2, stages are grouped in the sidebar: **Income** (Stages 2–14), **Taxes Paid** (Stages 15–16), **Foreign Schedules** (Stages 17–18), **Assets** (Stage 19).
 
 **Workflow 3 pages:**
 - **W3 Stage 1** — FA setup: FA documents directory path, December 31 FX rate confirmation per currency.
-- **W3 Stage 2** — FA document discovery and categorisation: same controls as W2 Stage 1 with FA-specific categories. Nil-declaration shortcut.
+- **W3 Stage 2** — FA document discovery and categorisation: same controls as W2 Stage 1 with FA-specific categories (A1, A2, A3, A4, B, C, D, E, F, G). Nil-declaration shortcut.
 - **W3 Stages 3–6** — one page per FA income sub-category (FA Foreign Interest, FA Foreign Dividends, FA Capital Gains, FA Other Income), all scoped to the Calendar Year. Same row structure as the corresponding W2 income stages. Persistent CY banner on every page.
-- **W3 Stages 7–13** — one page per Schedule FA sub-table (Parts A–G), each labeled "Calendar Year CY20XX". LLM-pre-filled from W3 Stages 3–6 where possible. Expandable computation trace for balance and income values. Note field per row. Explicit Reviewed confirmation gate per stage.
+- **W3 Stages 7–13** — one page per Schedule FA sub-table grouping (Stage 7: Parts A1+A2; Stage 8: Parts A3+B; Stage 8A: Part A4; Stage 9: Part C; Stage 10: Part D; Stage 11: Part E; Stage 12: Part F; Stage 13: Part G), each labeled "Calendar Year CY20XX". LLM-pre-filled from W3 Stages 3–6 where possible. For all foreign-currency amounts: original currency amount, SBI TT rate as of 31 Dec, and INR equivalent displayed inline. Expandable computation trace for balance and income values. Note field per row. CSV download per sub-table for direct portal upload. Explicit Reviewed confirmation gate per stage.
 - **W3 Stage 14** — FA Review and Lock: entry-count summary per Part, unreviewed-item warnings, Confirm and Lock button.
 
 **Workflow 4 pages:**
