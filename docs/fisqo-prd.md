@@ -319,11 +319,17 @@ All TDS2, TDS3, and TCS rows are fully editable; any field edited by the user is
 
 **W2 Stage 19 — Schedule TR.** Auto-derived from W2 Stage 18. The summary table (country, TIN, total taxes paid abroad, total relief available) is auto-populated from Schedule FSI. For each country row, the user confirms the relief section (90 / 90A / 91). Additionally: Was any tax paid outside India, on which relief was allowed in India, subsequently refunded or credited by the foreign tax authority? (Yes/No; default No). If Yes: amount of tax refunded (₹) and assessment year in which the relief was originally allowed. Final entries feed the ITR JSON.
 
-**W2 Stage 20 — Total Assets as of 31 March (Schedule AL).** Required in ITR-2/ITR-3 for taxpayers with total income exceeding ₹50 lakh; shown to all users with a note about the threshold so they can decide whether to complete it.
+**W2 Stage 20 — Total Assets as of 31 March (Schedule AL).** Required for taxpayers with total income exceeding ₹1 Crore; shown to all users with a note about the threshold so they can decide whether to complete it.
 
-Assets (cost as on 31 March): immovable assets (land, building — cost of acquisition); jewellery, bullion, archaeological collections, drawings, paintings, sculptures, and works of art; vehicles, yachts, boats, and aircraft; financial assets — shares and securities (Fisqo pre-fills portfolio value as of 31 March from W2 Stage 8/9 brokerage statements), insurance policies (sum assured), loans and advances given, bank balances (pre-filled from W2 Stage 3/4 closing balances), cash in hand, and other financial assets.
+**A. Immovable assets** — per property (Add Another): Description *, Flat/Door/Block No. *, Premises/Building/Village, Road/Street/Post Office, Area/Locality *, Town/City/District *, State * (dropdown), Country * (default India), Pin code, Amount (cost) in Rs. *.
 
-Liabilities (as on 31 March): amount of liability in relation to the assets above.
+**B. Movable assets** — fixed single-amount rows (not per item):
+- Jewellery, bullion etc (₹)
+- Archaeological collections, drawings, paintings, sculptures, works of art (₹)
+- Vehicles, yachts, boats and aircraft (₹)
+- Financial assets: Bank including all deposits (₹, pre-filled from W2 Stage 3/4 closing balances); Shares and securities (₹, pre-filled from W2 Stage 8/9 brokerage statements); Insurance policies (₹, cost/premium paid — not sum assured); Loans and advances given (₹); Cash in hand (₹)
+
+**C. Liabilities** — single total amount (₹) covering all liabilities in relation to A+B combined.
 
 Each row has an optional Note field. Rows feed Schedule AL in the ITR JSON.
 
