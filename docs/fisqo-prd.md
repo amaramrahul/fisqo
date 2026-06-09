@@ -139,17 +139,25 @@ Fisqo treats Form 26AS / AIS as the **authoritative source** for TDS data. Where
 | Non-salary TDS (interest, rent, professional fees, etc.) | 194A, 194I, 194J, 194C, others | Schedule TDS2 |
 | Tax Collected at Source | 206C series | Schedule TCS |
 
-### Data Fields Captured per Entry
+### Data Sources and Fields Captured
 
-Each TDS row in W2 Stage 12 captures: deductor name, TAN, section code, financial year, gross amount on which TDS was deducted, TDS amount deducted, TDS amount deposited (as confirmed in Form 26AS), and an optional free-text Note.
+TDS data is drawn from three sources and matched 1-to-1 by TAN + section code + approximate amount in W2 Stage 15:
+
+1. **Bank and brokerage statements** (already parsed for income in W2 Stages 2–14) — carry per-transaction TDS amounts for FD interest, professional fees, equity redemption proceeds, and other income.
+2. **Capital gains statements** — broker-issued statements that may include TDS on equity or MF redemptions.
+3. **Form 26AS / AIS** — the authoritative government record of what each deductor deposited. This is what the portal validates against.
+
+Per matched entry: deductor name, TAN, section code, Head of Income (Salary / HP / CG / OS), statement gross income and TDS deducted, Form 26AS TDS deposited, match status, and TDS credit claimed.
 
 ### Reconciliation
 
-If Form 16 / 16A amounts differ from Form 26AS, Fisqo surfaces the difference inline on the W2 Stage 12 row (e.g., "Form 16A: ₹12,000 deducted — Form 26AS: ₹11,500 deposited"). The user must resolve the discrepancy — typically by checking with the deductor — before confirming the row. The value carried into the ITR JSON is the Form 26AS deposited amount, as that is what the portal will validate against.
+For each matched pair, Fisqo shows both the statement amount and the Form 26AS amount. When they differ, a match-status indicator (⚠ Discrepancy) appears and the user picks which to prefer — "Use statement amount" or "Use Form 26AS amount" (default). For entries present in only one source, a status of ○ Statement only (deductor may not have deposited yet) or ○ Form 26AS only (statement not uploaded) is shown. The TDS credit claimed defaults to the preferred amount but remains editable. All rows editable; edited rows highlighted in amber.
+
+For TDS3 (property TDS from Form 16B / 16C): additionally captures PAN and Aadhaar of the buyer/tenant who deducted TDS.
 
 ### Advance Tax and Self-Assessment Tax
 
-Advance tax (paid quarterly by 15 June, 15 September, 15 December, 15 March) and self-assessment tax (paid at filing time) are captured separately in W2 Stage 13. Each challan entry specifies: BSR code, challan serial number, date of deposit, bank name, amount, and payment type. Form 26AS pre-populates these entries where available. These feed Schedule IT in the ITR JSON.
+Advance tax (paid quarterly by 15 June, 15 September, 15 December, 15 March) and self-assessment tax (paid at filing time) are captured in W2 Stage 16. Per challan: BSR Code, Date of Deposit, Serial Number of Challan, Amount (₹). Pre-populated from Form 26AS where available. These feed Schedule IT in the ITR JSON.
 
 ## Design And User Experience
 
@@ -281,9 +289,29 @@ Auto-computed and shown (not user-entered): Annual value, Standard deduction (30
 
 **W2 Stage 14 — Other Foreign Income.** RSU vesting income (perquisite), foreign salary, and other foreign-source income not covered in W2 Stages 5, 7, or 9. Each row: income type, country, currency, amount in foreign currency, FX rate (SBI TT buying rate and applicable date), INR equivalent. The FX rate is user-editable; an override is visually flagged. Feeds W2 Stage 17 (Schedule FSI).
 
-**W2 Stage 15 — TDS / Tax Credits.** Rows extracted from Form 16, Form 16A, Form 16B, and Form 26AS, grouped by deductor. Each row: deductor name, TAN, section code, gross amount subject to TDS, tax deducted, tax deposited, and optional note. The user can add, edit, or remove rows. Rows feed Schedule TDS1 (salary TDS), Schedule TDS2 (non-salary TDS), and Schedule TCS in the ITR JSON.
+**W2 Stage 15 — TDS / Tax Credits.** TDS entries are extracted from three sources: (a) bank and brokerage statements — the same documents already parsed in W2 Stages 2–14 — which carry per-transaction TDS amounts for FD interest, professional fees, equity redemption proceeds, and other income; (b) capital gains statements from brokers, which may include TDS on equity or MF redemptions; and (c) Form 26AS / AIS — the authoritative government record of what each deductor actually deposited with the government. Entries from all three sources are extracted by the LLM and matched 1-to-1 by TAN + section code + approximate amount.
 
-**W2 Stage 16 — Advance Tax & Self-Assessment Tax.** Challan-based rows (not institution-grouped). Fields: BSR code, challan serial number, date, bank name, amount, payment type (advance tax / self-assessment tax / regular assessment tax), and optional note. Pre-populated from Form 26AS if available; otherwise blank for manual entry. Rows feed Schedule IT in the ITR JSON.
+Entries are grouped by institution (deductor TAN), mirroring the layout of the Dividends and Capital Gains stages. Each institution card shows all TDS rows under that deductor, with a per-institution subtotal.
+
+**TDS2 / TDS3 rows** (per matched entry):
+- Deductor name, TAN, Section code (e.g. 194A interest, 194J professional fees, 195 non-resident payments), Head of Income (Salary / HP / CG / OS — maps the TDS to the correct income schedule in the ITR).
+- Statement figures: gross income (₹) and TDS deducted (₹) — from bank or CG statement.
+- Form 26AS figures: TDS deposited (₹) — from Form 26AS / AIS.
+- Match status indicator: ✓ Matched (amounts agree) / ⚠ Discrepancy (amounts differ) / ○ Statement only (not yet in Form 26AS — deductor may not have deposited) / ○ Form 26AS only (statement not uploaded or not applicable).
+- On Discrepancy: a preference toggle — "Use statement amount" / "Use Form 26AS amount" (defaults to Form 26AS, which is what the portal validates against).
+- TDS credit claimed this year (₹) — defaults to the preferred amount; editable.
+- Brought-forward TDS from prior years: FY and amount (₹) — shown when non-zero per Form 26AS.
+- TDS credit carried forward (₹) — auto-computed (brought-forward + current FY − claimed).
+
+For **TDS3 rows** (property TDS from Form 16B / Form 16C), additionally: PAN of buyer/tenant *, Aadhaar of buyer/tenant.
+
+**TCS rows** (Tax Collected at Source, per collector, grouped by institution): TAN of Collector, TCS collected in current FY (₹), TCS credit claimed this year (₹), TCS credit carried forward (₹). Source: Form 27D / Form 26AS.
+
+**TDS1 rows** (salary TDS) are auto-populated from W2 Stage 2 (Form 16 Part A) and shown read-only in this stage for completeness: TAN of employer, Employer name, Income chargeable under Salaries (₹), Total TDS (₹). They feed Schedule TDS1 in the ITR JSON and are not editable here (edit via W2 Stage 2).
+
+All TDS2, TDS3, and TCS rows are fully editable; any field edited by the user is highlighted in amber, consistent with the income stages. Rows may be added or removed. Rows feed Schedule TDS1 (salary), Schedule TDS2 (non-salary), Schedule TDS3 (property), and Schedule TCS in the ITR JSON.
+
+**W2 Stage 16 — Advance Tax & Self-Assessment Tax.** Challan-based rows, not institution-grouped. Pre-populated from Form 26AS where available; otherwise blank for manual entry. Per challan: BSR Code *, Date of Deposit (DD/MM/YYYY) *, Serial Number of Challan *, Amount (₹) *. All rows editable; edited rows highlighted in amber. Rows feed Schedule IT in the ITR JSON.
 
 **W2 Stage 17 — Schedule FSI.** Auto-derived from W2 Stages 5, 7, 9, and 14. One entry per country. For each country, the user confirms: Taxpayer Identification Number in source country (TIN abroad — e.g. US SSN; mandatory on portal); and for each income head (Salary / House Property / Capital Gains / Other Sources) where income was earned: income in foreign currency, INR equivalent (from the FX rate already computed), taxes paid in the source country (user-entered or extracted from statements), tax payable in India on such income under normal provisions (Fisqo computes from income and applicable slab; user-confirmable), tax relief available (auto: lower of tax paid abroad or tax payable in India), and relevant article of DTAA if relief is claimed u/s 90 or 90A (optional text per income head). The user reviews and corrects entries before JSON generation.
 
