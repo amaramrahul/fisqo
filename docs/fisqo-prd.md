@@ -84,7 +84,7 @@ Fisqo is built for resident individual taxpayers in India whose returns are comp
 
 12. **Persisted settings scope.** Only LLM configuration is persisted as a global setting. PAN is scoped to a **tax user** (a single Fisqo installation can hold multiple tax users). All other settings (name, address, statements directory, etc.) are scoped to an individual filing.
 
-13. **Stage idempotency.** Each stage within a workflow, once completed, is not re-executed on revisit. Re-execution requires an explicit user-initiated rescan, which warns the user that downstream stages within the same workflow will be reset. Rescan dependencies are scoped within a workflow; a rescan in W2 does not affect W3. W4 generation (W4 Stage 2) is always re-runnable and reads the current completed state of W1, W2, and W3 at the time of execution.
+13. **Stage idempotency.** Each stage within a workflow, once completed, is not re-executed on revisit. Re-execution requires an explicit user-initiated rescan, which warns the user that downstream stages within the same workflow will be reset. Rescan dependencies are scoped within a workflow; a rescan in W2 does not affect W3. W4 generation (W4 Stage 3) is always re-runnable and reads the current completed state of W1, W2, and W3 at the time of execution.
 
 14. **Transparency of computations.** Every computed number must be inspectable — the user can see the inputs, the FX rate, and the formula used.
 
@@ -98,7 +98,7 @@ Fisqo is built for resident individual taxpayers in India whose returns are comp
 
 19. **Advance tax and self-assessment tax entry.** Provide a dedicated data-entry section for advance tax and self-assessment tax challans. Each entry captures: BSR code, challan serial number, date of deposit, amount, bank name, and payment type (advance tax / self-assessment tax / regular assessment tax). Where Form 26AS is available, pre-populate from it; otherwise the user enters manually. These feed Schedule IT in the ITR JSON.
 
-20. **Row-level notes.** Every data row in every data-entry stage — W2 Stages 2–19, and W3 Stages 3–13 — supports an optional free-text **Note** field. Notes are persisted alongside the row, exported into the ODS file as a dedicated Notes column on each sheet, and are visible during the W4 Stage 3 filing checklist. Notes do not affect computed values and are never sent to the LLM.
+20. **Row-level notes.** Every data row in every data-entry stage — W2 Stages 2–20, and W3 Stages 3–13 — supports an optional free-text **Note** field. Notes are persisted alongside the row, exported into the ODS file as a dedicated Notes column on each sheet, and are visible during the W4 Stage 4 filing checklist. Notes do not affect computed values and are never sent to the LLM.
 
 21. **Schedule FA data collection.** Schedule FA (foreign asset disclosure) is handled in a dedicated separate workflow — **Workflow 3 (Schedule FA)** — with its own documents directory covering the Calendar Year (1 January – 31 December of the year preceding the assessment year). This is architecturally separate from Workflow 2, which covers the Financial Year (April – March). The two time periods overlap but are not identical: an asset may be held during the CY but disposed of before the FY begins, or acquired after the CY ends; the FA workflow makes no assumptions about the FY workflow's asset universe.
 
@@ -106,7 +106,7 @@ Workflow 3 accepts its own set of statements (full-year CY statements from forei
 
 **The UI must make the CY vs FY distinction explicit throughout Workflow 3.** All W3 stage pages carry a persistent "Schedule FA — Calendar Year CY20XX, 1 January – 31 December" banner. FX conversion for peak and closing balances uses the 31 December rate, confirmed in W3 Stage 1, distinct from the 31 March rate used in Workflow 2. Each FA sub-table stage has an explicit Reviewed confirmation gate before the workflow can be locked, given the steep Black Money Act penalties for omissions.
 
-Workflow 3 results are consumed by Workflow 4 (W4 Stage 2) for ODS and ITR JSON generation. If W3 is not locked when W4 generates the ITR JSON, Schedule FA entries are omitted and a notice is recorded.
+Workflow 3 results are consumed by Workflow 4 (W4 Stage 3) for ODS and ITR JSON generation. If W3 is not locked when W4 generates the ITR JSON, Schedule FA entries are omitted and a notice is recorded.
 
 22. **Schedule FSI derivation.** Auto-derive Schedule FSI (foreign-source income) from the foreign-institution income rows collected in W2 Stages 4 (Foreign Interest), 6 (Foreign Dividends), 8 (Foreign Capital Gains), and 11 (Other Foreign Income). Group by country. For each country × income-head combination, show: income in foreign currency, INR equivalent (from the FX rate already computed), and tax paid in the source country (user-entered or extracted from statements). The user reviews and corrects before JSON generation.
 
@@ -398,18 +398,38 @@ Nil-declaration shortcut: if the user has no foreign assets to report, they clic
 
 ### Workflow 4 — Summary & Filing
 
-Integration point. Reads the completed outputs of Workflows 1, 2, and 3 and produces the ITR artefacts. W4 Stage 2 (generation) is blocked until W1 and W2 are Complete and W3 is either Complete or Skipped; the user can open Workflow 4 at any time to check status.
+Integration point. Reads the completed outputs of Workflows 1, 2, and 3 and produces the ITR artefacts. W4 Stage 3 (generation) is blocked until W1 and W2 are Complete and W3 is either Complete or Skipped; the user can open Workflow 4 at any time to check status.
 
 **W4 Stage 1 — Pre-filing Review.** Shows the completion status of Workflows 1, 2, and 3 with a summary of key computed numbers — total income by category, total TDS, total advance tax, Schedule FA entry counts. Any workflow that is In Progress or Not Started is highlighted with a direct link to resume it. The user can proceed even if W3 is incomplete; they receive a warning that the ITR JSON will not include Schedule FA data.
 
-**W4 Stage 2 — ODS and JSON Generation.** Fisqo produces:
+**W4 Stage 2 — Tax Computation Review (Part B-TTI).** Fisqo independently computes the full Part B-TTI chain and presents it for user review before generating the ITR JSON. All computed fields are shown in sequence:
+
+Total income (from Part B-TI) → tax at slab rates → Section 87A rebate → surcharge (with marginal relief) → Health & Education Cess (4%) → gross tax liability → AMT credit u/s 115JD → tax relief (Section 89 / 90 / 91) → net tax liability → TDS / advance tax / TCS credits → balance payable or refund.
+
+Fields Fisqo auto-computes and shows as pre-filled (amber-highlighted if user overrides):
+- Section 87A rebate: ₹60,000 for total income up to ₹12 lakh under New Tax Regime, else ₹0
+- Health & Education Cess: 4% of (tax after rebate + surcharge)
+- Interest u/s 234B: computed from income and advance tax actually paid; shown if advance tax paid is less than 90% of assessed tax
+- Interest u/s 234C: computed from quarterly advance tax instalment shortfalls
+- Late filing fee u/s 234F: ₹1,000 (total income ≤ ₹5 lakh) or ₹5,000 (otherwise), shown only if filing date is after the due date
+- Section 90/91 relief: auto from W2 Stage 19 (Schedule TR)
+
+User-entered fields:
+- Section 89 relief (salary arrears) — optional; shown with a note: *"File Form 10E separately on the IT portal before submitting this return"*
+- Interest u/s 234A — only if filing after the due date and tax is unpaid; Fisqo shows a computed estimate but requires user confirmation
+
+**Foreign asset declaration** (mandatory): "Did you at any time during the previous year hold any asset / signing authority / income outside India?" Auto-set to **Yes** if W3 has any entries or W2 Stages 5, 7, 9, or 14 contain any foreign income rows; otherwise defaults to **No**. The user must explicitly confirm this before proceeding.
+
+**If balance is payable**: A prominent banner shows the amount due and instructs the user to: (1) pay self-assessment tax via the IT portal or bank, (2) return to W2 Stage 17 to enter the challan, and (3) return to this stage to re-run the computation before generating the JSON.
+
+**W4 Stage 3 — ODS and JSON Generation.** Fisqo produces:
 
 - A single ODS file with one sheet per category — Domestic Salary, Domestic Bank Interest, Other Domestic Interest, Foreign Interest, Domestic Dividends, Foreign Dividends, Domestic Capital Gains, Foreign Capital Gains, Property Capital Gains, House Property, Other Domestic Income, Other Foreign Income, TDS Credits, Advance Tax Challans, Schedule FA (labeled "Calendar Year CY20XX — 1 January – 31 December"), Schedule FSI, Schedule TR, Total Assets (Schedule AL) — grouped by category (institution grouping is collapsed at this point; exact column structure is deferred to the technical design document). Each sheet includes a Notes column. If W3 is not locked, the Schedule FA sheet records a nil declaration or an "incomplete — Schedule FA not filed" notice.
 - The ITR JSON document, validated against the portal schema, including Schedule TDS1, TDS2, TCS, Schedule IT, Schedule FA, Schedule FSI, Schedule TR, and Schedule AL. If W3 is not locked, Schedule FA entries are omitted and a note records the omission.
 
 The user can regenerate these files at any time from this stage.
 
-**W4 Stage 3 — Manual Filing.** Fisqo provides instructions for the user to:
+**W4 Stage 4 — Manual Filing.** Fisqo provides instructions for the user to:
 
 1. Open the generated JSON in the official Indian IT Department application (or edit it manually) to make any adjustments the portal requires.
 2. Follow a step-by-step checklist to upload the JSON, verify each schedule on the portal, and complete the submission and e-verification.
@@ -420,7 +440,7 @@ The user can regenerate these files at any time from this stage.
 
 ```
 [W1] Personal Information          ● Complete
-[W2] FY Income & Taxes             ◑ In Progress  (Stage 8 of 19)
+[W2] FY Income & Taxes             ◑ In Progress  (Stage 8 of 20)
 [W3] Schedule FA — CY20XX          ○ Not started
 [W4] Summary & Filing              🔒 Awaiting W1, W2, W3
 ```
@@ -460,8 +480,9 @@ Within Workflow 2, stages are grouped in the sidebar: **Income** (Stages 2–15)
 
 **Workflow 4 pages:**
 - **W4 Stage 1** — Pre-filing review: completion status of W1/W2/W3 with key computed totals and direct links to incomplete workflows.
-- **W4 Stage 2** — ODS and JSON generation: status, downloads, and regenerate control.
-- **W4 Stage 3** — Manual filing checklist: step-by-step portal upload and e-verification guidance.
+- **W4 Stage 2** — Tax Computation Review: full Part B-TTI chain (income → tax → rebate → cess → relief → net liability); user-confirmable computed fields; foreign asset declaration; self-assessment tax prompt if balance due.
+- **W4 Stage 3** — ODS and JSON generation: status, downloads, and regenerate control.
+- **W4 Stage 4** — Manual filing checklist: step-by-step portal upload and e-verification guidance.
 
 ## Dependencies
 

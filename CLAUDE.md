@@ -35,7 +35,7 @@ We are systematically navigating the IT Portal (https://eportal.incometax.gov.in
 | Schedule CYLA | Set-off of current year losses | Auto-computed by portal | ✅ Done (no Fisqo stage needed) |
 | Schedule BFLA | Set-off of brought-forward losses | Auto-computed by portal | ✅ Done (no Fisqo stage needed) |
 | Schedule CFL | Carry-forward of losses | W2 Stage 15 (new) | ✅ Done |
-| Part B-TTI | Final tax computation and liability | W4 | 🔲 Pending |
+| Part B-TTI | Final tax computation and liability | W4 Stage 2 (new) | ✅ Done |
 | Schedule SI | Income at special rates | — | 🔲 Pending (check if auto-computed) |
 | Schedule AL | Assets and Liabilities | W2 Stage 19 | 🔲 Pending verify |
 | Part B-TI | Total income computation | — | 🔲 Pending (likely auto-computed) |
