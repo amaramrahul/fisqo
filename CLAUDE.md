@@ -32,9 +32,9 @@ We are systematically navigating the IT Portal (https://eportal.incometax.gov.in
 | Schedule TR | Tax relief for foreign taxes paid | W2 Stage 18 | ✅ Done |
 | Schedule FA | Foreign asset disclosure (CY scope) | W3 Stages 7–13 | ✅ Done |
 | Tax Paid (TP) | TDS1/TDS2/TDS3/TCS/Advance Tax | W2 Stages 15–16 | ✅ Done |
-| Schedule CYLA | Set-off of current year losses | — | 🔲 Pending |
-| Schedule BFLA | Set-off of brought-forward losses | — | 🔲 Pending |
-| Schedule CFL | Carry-forward of losses | — | 🔲 Pending |
+| Schedule CYLA | Set-off of current year losses | Auto-computed by portal | ✅ Done (no Fisqo stage needed) |
+| Schedule BFLA | Set-off of brought-forward losses | Auto-computed by portal | ✅ Done (no Fisqo stage needed) |
+| Schedule CFL | Carry-forward of losses | W2 Stage 15 (new) | ✅ Done |
 | Part B-TTI | Final tax computation and liability | W4 | 🔲 Pending |
 | Schedule SI | Income at special rates | — | 🔲 Pending (check if auto-computed) |
 | Schedule AL | Assets and Liabilities | W2 Stage 19 | 🔲 Pending verify |

@@ -141,7 +141,7 @@ Fisqo treats Form 26AS / AIS as the **authoritative source** for TDS data. Where
 
 ### Data Sources and Fields Captured
 
-TDS data is drawn from three sources and matched 1-to-1 by TAN + section code + approximate amount in W2 Stage 15:
+TDS data is drawn from three sources and matched 1-to-1 by TAN + section code + approximate amount in W2 Stage 16:
 
 1. **Bank and brokerage statements** (already parsed for income in W2 Stages 2–14) — carry per-transaction TDS amounts for FD interest, professional fees, equity redemption proceeds, and other income.
 2. **Capital gains statements** — broker-issued statements that may include TDS on equity or MF redemptions.
@@ -157,7 +157,7 @@ For TDS3 (property TDS from Form 16B / 16C): additionally captures PAN and Aadha
 
 ### Advance Tax and Self-Assessment Tax
 
-Advance tax (paid quarterly by 15 June, 15 September, 15 December, 15 March) and self-assessment tax (paid at filing time) are captured in W2 Stage 16. Per challan: BSR Code, Date of Deposit, Serial Number of Challan, Amount (₹). Pre-populated from Form 26AS where available. These feed Schedule IT in the ITR JSON.
+Advance tax (paid quarterly by 15 June, 15 September, 15 December, 15 March) and self-assessment tax (paid at filing time) are captured in W2 Stage 17. Per challan: BSR Code, Date of Deposit, Serial Number of Challan, Amount (₹). Pre-populated from Form 26AS where available. These feed Schedule IT in the ITR JSON.
 
 ## Design And User Experience
 
@@ -198,7 +198,7 @@ Covers all Financial Year (April–March) income and all taxes paid — TDS dedu
 
 Form 16, Form 16A, Form 16B, and Form 26AS / AIS are recognised as distinct document types. The LLM classifier groups them under a **Tax Documents** pseudo-institution created automatically when such documents are found; its pre-selected category is TDS / Tax Credits.
 
-W2 Stages 17–19 (Schedule FSI, Schedule TR, and Total Assets) are not driven by W2 Stage 1 category selection; they always appear and are individually user-skippable.
+W2 Stages 18–20 (Schedule FSI, Schedule TR, and Total Assets) are not driven by W2 Stage 1 category selection; they always appear and are individually user-skippable.
 
 The user clicks **Next** to persist changes and advance. The classification is not re-run on revisit unless the user clicks **Rescan**, which warns about downstream resets.
 
@@ -216,11 +216,11 @@ Added, removed, and modified entries are visually distinct. The user clicks **Ne
 
 **W2 Stage 4 — Other Domestic Interest.** FD interest, RD interest, bond coupons, NSC accrual, post-office interest, interest on loans given, and other domestic fixed-income. Also includes tax-exempt interest: PPF interest, EPF interest (to the extent taxable portions are excluded), and SSY interest (Sukanya Samriddhi Yojana — minor child's account). Each row: institution, instrument type, amount (INR), and whether the interest is taxable or exempt. Taxable rows map to Schedule OS 1(b)(ix); exempt rows (PPF, EPF, SSY) map to Schedule EI Field 1 in the ITR JSON.
 
-**W2 Stage 5 — Foreign Interest.** Interest from foreign bank accounts, foreign bonds, and other foreign fixed-income instruments. Each row: institution, country, currency, amount in foreign currency, FX rate (SBI TT buying rate and applicable date), INR equivalent. The FX rate is user-editable; an override is visually flagged. ITR line: Schedule OS. Feeds W2 Stage 17 (Schedule FSI).
+**W2 Stage 5 — Foreign Interest.** Interest from foreign bank accounts, foreign bonds, and other foreign fixed-income instruments. Each row: institution, country, currency, amount in foreign currency, FX rate (SBI TT buying rate and applicable date), INR equivalent. The FX rate is user-editable; an override is visually flagged. ITR line: Schedule OS. Feeds W2 Stage 18 (Schedule FSI).
 
 **W2 Stage 6 — Domestic Dividends.** Dividends from Indian listed equities and mutual funds. Each row: company/fund name, ISIN, dividend amount (INR), dividend date. ITR line: Schedule OS.
 
-**W2 Stage 7 — Foreign Dividends.** Dividends from foreign equities and ADRs/GDRs. Each row: company name, country, currency, dividend date, amount in foreign currency, FX rate (SBI TT buying rate and applicable date), INR equivalent. The FX rate is user-editable; an override is visually flagged. ITR line: Schedule OS. Feeds W2 Stage 17 (Schedule FSI).
+**W2 Stage 7 — Foreign Dividends.** Dividends from foreign equities and ADRs/GDRs. Each row: company name, country, currency, dividend date, amount in foreign currency, FX rate (SBI TT buying rate and applicable date), INR equivalent. The FX rate is user-editable; an override is visually flagged. ITR line: Schedule OS. Feeds W2 Stage 18 (Schedule FSI).
 
 **W2 Stage 8 — Domestic Capital Gains.** Capital gains from Indian listed equities (STCG 111A / LTCG 112A), equity mutual funds, listed bonds/debentures (Section 112), and other domestic securities. Immovable property is handled separately in W2 Stage 10. ITR line: Schedule CG and Schedule 112A.
 
@@ -234,7 +234,7 @@ For LTCG 112A rows, Fisqo also generates a Schedule 112A–compatible CSV output
 
 The source mode is fixed per institution (set in W2 Stage 1) and applies to all rows for that institution. The user can add/edit/remove rows within the mode.
 
-**W2 Stage 9 — Foreign Capital Gains.** Capital gains from foreign equities and other foreign assets. ITR line: Schedule CG (A5 for STCG, B8 for LTCG). Feeds W2 Stage 17 (Schedule FSI).
+**W2 Stage 9 — Foreign Capital Gains.** Capital gains from foreign equities and other foreign assets. ITR line: Schedule CG (A5 for STCG, B8 for LTCG). Feeds W2 Stage 18 (Schedule FSI).
 
 The stage operates in the mode selected per institution in W2 Stage 1:
 
@@ -287,9 +287,11 @@ Auto-computed and shown (not user-entered): Annual value, Standard deduction (30
 
 **W2 Stage 13 — Other Domestic Income.** Freelance or professional income, gifts, and other domestic income not covered in W2 Stages 2–12. ITR line: Schedule OS / Schedule S as applicable.
 
-**W2 Stage 14 — Other Foreign Income.** RSU vesting income (perquisite), foreign salary, and other foreign-source income not covered in W2 Stages 5, 7, or 9. Each row: income type, country, currency, amount in foreign currency, FX rate (SBI TT buying rate and applicable date), INR equivalent. The FX rate is user-editable; an override is visually flagged. Feeds W2 Stage 17 (Schedule FSI).
+**W2 Stage 14 — Other Foreign Income.** RSU vesting income (perquisite), foreign salary, and other foreign-source income not covered in W2 Stages 5, 7, or 9. Each row: income type, country, currency, amount in foreign currency, FX rate (SBI TT buying rate and applicable date), INR equivalent. The FX rate is user-editable; an override is visually flagged. Feeds W2 Stage 18 (Schedule FSI).
 
-**W2 Stage 15 — TDS / Tax Credits.** TDS entries are extracted from three sources: (a) bank and brokerage statements — the same documents already parsed in W2 Stages 2–14 — which carry per-transaction TDS amounts for FD interest, professional fees, equity redemption proceeds, and other income; (b) capital gains statements from brokers, which may include TDS on equity or MF redemptions; and (c) Form 26AS / AIS — the authoritative government record of what each deductor actually deposited with the government. Entries from all three sources are extracted by the LLM and matched 1-to-1 by TAN + section code + approximate amount.
+**W2 Stage 15 — Brought-Forward Losses (Schedule CFL).** Prior-year capital and house property losses carried forward reduce current-year tax by setting off against gains. This stage is skippable for users with no prior-year losses. Per assessment year where losses exist (2018-19 through 2024-25), the user enters: Date of filing of the original ITR for that year (DD-MMM-YYYY) *, House property loss carried forward (₹), Short-term capital loss carried forward (₹), Long-term capital loss carried forward (₹). Source: prior year ITR acknowledgement / ITR-V. No LLM extraction — fully manual. Race horse losses are out of scope. Current-year losses (if any) are auto-derived from W2 Stages 8–12 and not entered here. Entries feed Schedule CFL in the ITR JSON; the portal auto-computes CYLA and BFLA from these entries and the current-year income.
+
+**W2 Stage 16 — TDS / Tax Credits.** TDS entries are extracted from three sources: (a) bank and brokerage statements — the same documents already parsed in W2 Stages 2–14 — which carry per-transaction TDS amounts for FD interest, professional fees, equity redemption proceeds, and other income; (b) capital gains statements from brokers, which may include TDS on equity or MF redemptions; and (c) Form 26AS / AIS — the authoritative government record of what each deductor actually deposited with the government. Entries from all three sources are extracted by the LLM and matched 1-to-1 by TAN + section code + approximate amount.
 
 Entries are grouped by institution (deductor TAN), mirroring the layout of the Dividends and Capital Gains stages. Each institution card shows all TDS rows under that deductor, with a per-institution subtotal.
 
@@ -311,13 +313,13 @@ For **TDS3 rows** (property TDS from Form 16B / Form 16C), additionally: PAN of 
 
 All TDS2, TDS3, and TCS rows are fully editable; any field edited by the user is highlighted in amber, consistent with the income stages. Rows may be added or removed. Rows feed Schedule TDS1 (salary), Schedule TDS2 (non-salary), Schedule TDS3 (property), and Schedule TCS in the ITR JSON.
 
-**W2 Stage 16 — Advance Tax & Self-Assessment Tax.** Challan-based rows, not institution-grouped. Pre-populated from Form 26AS where available; otherwise blank for manual entry. Per challan: BSR Code *, Date of Deposit (DD/MM/YYYY) *, Serial Number of Challan *, Amount (₹) *. All rows editable; edited rows highlighted in amber. Rows feed Schedule IT in the ITR JSON.
+**W2 Stage 17 — Advance Tax & Self-Assessment Tax.** Challan-based rows, not institution-grouped. Pre-populated from Form 26AS where available; otherwise blank for manual entry. Per challan: BSR Code *, Date of Deposit (DD/MM/YYYY) *, Serial Number of Challan *, Amount (₹) *. All rows editable; edited rows highlighted in amber. Rows feed Schedule IT in the ITR JSON.
 
-**W2 Stage 17 — Schedule FSI.** Auto-derived from W2 Stages 5, 7, 9, and 14. One entry per country. For each country, the user confirms: Taxpayer Identification Number in source country (TIN abroad — e.g. US SSN; mandatory on portal); and for each income head (Salary / House Property / Capital Gains / Other Sources) where income was earned: income in foreign currency, INR equivalent (from the FX rate already computed), taxes paid in the source country (user-entered or extracted from statements), tax payable in India on such income under normal provisions (Fisqo computes from income and applicable slab; user-confirmable), tax relief available (auto: lower of tax paid abroad or tax payable in India), and relevant article of DTAA if relief is claimed u/s 90 or 90A (optional text per income head). The user reviews and corrects entries before JSON generation.
+**W2 Stage 18 — Schedule FSI.** Auto-derived from W2 Stages 5, 7, 9, and 14. One entry per country. For each country, the user confirms: Taxpayer Identification Number in source country (TIN abroad — e.g. US SSN; mandatory on portal); and for each income head (Salary / House Property / Capital Gains / Other Sources) where income was earned: income in foreign currency, INR equivalent (from the FX rate already computed), taxes paid in the source country (user-entered or extracted from statements), tax payable in India on such income under normal provisions (Fisqo computes from income and applicable slab; user-confirmable), tax relief available (auto: lower of tax paid abroad or tax payable in India), and relevant article of DTAA if relief is claimed u/s 90 or 90A (optional text per income head). The user reviews and corrects entries before JSON generation.
 
-**W2 Stage 18 — Schedule TR.** Auto-derived from W2 Stage 17. The summary table (country, TIN, total taxes paid abroad, total relief available) is auto-populated from Schedule FSI. For each country row, the user confirms the relief section (90 / 90A / 91). Additionally: Was any tax paid outside India, on which relief was allowed in India, subsequently refunded or credited by the foreign tax authority? (Yes/No; default No). If Yes: amount of tax refunded (₹) and assessment year in which the relief was originally allowed. Final entries feed the ITR JSON.
+**W2 Stage 19 — Schedule TR.** Auto-derived from W2 Stage 18. The summary table (country, TIN, total taxes paid abroad, total relief available) is auto-populated from Schedule FSI. For each country row, the user confirms the relief section (90 / 90A / 91). Additionally: Was any tax paid outside India, on which relief was allowed in India, subsequently refunded or credited by the foreign tax authority? (Yes/No; default No). If Yes: amount of tax refunded (₹) and assessment year in which the relief was originally allowed. Final entries feed the ITR JSON.
 
-**W2 Stage 19 — Total Assets as of 31 March (Schedule AL).** Required in ITR-2/ITR-3 for taxpayers with total income exceeding ₹50 lakh; shown to all users with a note about the threshold so they can decide whether to complete it.
+**W2 Stage 20 — Total Assets as of 31 March (Schedule AL).** Required in ITR-2/ITR-3 for taxpayers with total income exceeding ₹50 lakh; shown to all users with a note about the threshold so they can decide whether to complete it.
 
 Assets (cost as on 31 March): immovable assets (land, building — cost of acquisition); jewellery, bullion, archaeological collections, drawings, paintings, sculptures, and works of art; vehicles, yachts, boats, and aircraft; financial assets — shares and securities (Fisqo pre-fills portfolio value as of 31 March from W2 Stage 8/9 brokerage statements), insurance policies (sum assured), loans and advances given, bank balances (pre-filled from W2 Stage 3/4 closing balances), cash in hand, and other financial assets.
 
@@ -440,13 +442,14 @@ Each card shows the workflow name, current status, and (if in progress) the curr
 - **W2 Stage 11** — Capital Gains Deductions (Section D): manual entry per reinvestment (type, dates, amounts, CGAS details); skippable.
 - **W2 Stage 12** — House Property: per-property entry (type, ownership, rent, municipal taxes, unrealised rent, loan details per loan); auto-computed annual value and income shown.
 - **W2 Stages 13–14** — Other Domestic Income; Other Foreign Income.
-- **W2 Stage 15** — TDS / Tax Credits: deductor-grouped rows, add/edit/remove, Note field.
-- **W2 Stage 16** — Advance Tax & Self-Assessment Tax: challan rows, add/edit/remove, Note field.
-- **W2 Stage 17** — Schedule FSI: one entry per country — Taxpayer Identification Number (TIN abroad), per-income-head income/tax-paid/tax-payable-in-India/relief fields, and relevant DTAA article per head; auto-derived from W2 Stages 5, 7, 9, 14 with user review.
-- **W2 Stage 18** — Schedule TR: per-country relief section (90/90A/91) confirmation; refunded foreign tax flag (Yes/No) with amount and assessment year if Yes.
-- **W2 Stage 19** — Total Assets (Schedule AL): structured entry of assets and liabilities as of 31 March, with LLM-pre-filled bank and securities values and Note field per row.
+- **W2 Stage 15** — Brought-Forward Losses (Schedule CFL): manual entry of prior-year HP loss, STCL, and LTCL per assessment year (2018-19 to 2024-25) with filing date; skippable.
+- **W2 Stage 16** — TDS / Tax Credits: deductor-grouped rows, add/edit/remove, Note field.
+- **W2 Stage 17** — Advance Tax & Self-Assessment Tax: challan rows, add/edit/remove, Note field.
+- **W2 Stage 18** — Schedule FSI: one entry per country — Taxpayer Identification Number (TIN abroad), per-income-head income/tax-paid/tax-payable-in-India/relief fields, and relevant DTAA article per head; auto-derived from W2 Stages 5, 7, 9, 14 with user review.
+- **W2 Stage 19** — Schedule TR: per-country relief section (90/90A/91) confirmation; refunded foreign tax flag (Yes/No) with amount and assessment year if Yes.
+- **W2 Stage 20** — Total Assets (Schedule AL): structured entry of assets and liabilities as of 31 March, with LLM-pre-filled bank and securities values and Note field per row.
 
-Within Workflow 2, stages are grouped in the sidebar: **Income** (Stages 2–14), **Taxes Paid** (Stages 15–16), **Foreign Schedules** (Stages 17–18), **Assets** (Stage 19).
+Within Workflow 2, stages are grouped in the sidebar: **Income** (Stages 2–15), **Taxes Paid** (Stages 16–17), **Foreign Schedules** (Stages 18–19), **Assets** (Stage 20).
 
 **Workflow 3 pages:**
 - **W3 Stage 1** — FA setup: FA documents directory path, December 31 FX rate confirmation per currency.
