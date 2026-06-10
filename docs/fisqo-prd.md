@@ -84,7 +84,7 @@ Fisqo is built for resident individual taxpayers in India whose returns are comp
 
 12. **Persisted settings scope.** Only LLM configuration is persisted as a global setting. PAN is scoped to a **tax user** (a single Fisqo installation can hold multiple tax users). All other settings (name, address, statements directory, etc.) are scoped to an individual filing.
 
-13. **Stage idempotency.** Each stage within a workflow, once completed, is not re-executed on revisit. Re-execution requires an explicit user-initiated rescan, which warns the user that downstream stages within the same workflow will be reset. Rescan dependencies are scoped within a workflow; a rescan in W2 does not affect W3. W4 generation (W4 Stage 3) is always re-runnable and reads the current completed state of W1, W2, and W3 at the time of execution.
+13. **Stage idempotency.** Each stage within a workflow, once completed, is not re-executed on revisit. Re-execution requires an explicit user-initiated rescan, which warns the user that downstream stages within the same workflow will be reset. Rescan dependencies are scoped within a workflow.
 
 14. **Transparency of computations.** Every computed number must be inspectable — the user can see the inputs, the FX rate, and the formula used.
 
@@ -94,25 +94,19 @@ Fisqo is built for resident individual taxpayers in India whose returns are comp
 
 17. **Extensibility.** Adding support for a new statement format or institution should not require changes to core logic; it should be a matter of adding a prompt, example, or lightweight adapter.
 
-18. **TDS document parsing.** Recognise Form 16, Form 16A, Form 16B, and Form 26AS / AIS as document types in W2 Stage 1 (Document Discovery and Categorisation). Parse them for TDS/TCS deduction details (deductor name, TAN, section, amount deducted, amount deposited, assessment year). These feed Schedule TDS1 (salary TDS), Schedule TDS2 (non-salary TDS), and Schedule TCS in the ITR JSON.
+18. **TDS document parsing.** Recognise Form 16, Form 16A, Form 16B, and Form 26AS / AIS as distinct TDS document types. Parse them for TDS/TCS deduction details (deductor name, TAN, section, amount deducted, amount deposited, assessment year). These feed Schedule TDS1 (salary TDS), Schedule TDS2 (non-salary TDS), and Schedule TCS in the ITR JSON.
 
-19. **Advance tax and self-assessment tax entry.** Provide a dedicated data-entry section for advance tax and self-assessment tax challans. Each entry captures: BSR code, challan serial number, date of deposit, amount, bank name, and payment type (advance tax / self-assessment tax / regular assessment tax). Where Form 26AS is available, pre-populate from it; otherwise the user enters manually. These feed Schedule IT in the ITR JSON.
+19. **Advance tax and self-assessment tax entry.** Provide a dedicated data-entry section for advance tax and self-assessment tax challans, pre-populated from Form 26AS where available. These feed Schedule IT in the ITR JSON.
 
-20. **Row-level notes.** Every data row in every data-entry stage — W2 Stages 2–20, and W3 Stages 3–14 — supports an optional free-text **Note** field. Notes are persisted alongside the row, exported into the ODS file as a dedicated Notes column on each sheet, and are visible during the W4 Stage 4 filing checklist. Notes do not affect computed values and are never sent to the LLM.
+20. **Row-level notes.** Every data row in every data-entry stage supports an optional free-text **Note** field. Notes are persisted alongside the row and exported into the ODS file as a dedicated Notes column on each sheet. Notes do not affect computed values and are never sent to the LLM.
 
 21. **Schedule FA data collection.** Schedule FA (foreign asset disclosure) is handled in a dedicated separate workflow — **Workflow 3 (Schedule FA)** — with its own documents directory covering the Calendar Year (1 January – 31 December of the year preceding the assessment year). This is architecturally separate from Workflow 2, which covers the Financial Year (April – March). The two time periods overlap but are not identical: an asset may be held during the CY but disposed of before the FY begins, or acquired after the CY ends; the FA workflow makes no assumptions about the FY workflow's asset universe.
 
-Workflow 3 accepts its own set of statements (full-year CY statements from foreign banks and brokerages) and runs its own 15-stage pipeline: document discovery and categorisation, CY income extraction (foreign interest, dividends, capital gains, other income), and Schedule FA sub-table entry stages for all parts required by the ITR-2/ITR-3 schema (Parts A–G: foreign bank accounts, financial interests in foreign entities, immovable property, other capital assets, signing authority accounts, trusts, and other interests). The LLM pre-fills FA sub-table entries from the CY income data extracted in W3 Stages 3–6; the user reviews and completes remaining fields.
+22. **Schedule FSI derivation.** Auto-derive Schedule FSI (foreign-source income) from all foreign-institution income rows collected in Workflow 2, grouped by country. These feed the ITR JSON.
 
-**The UI must make the CY vs FY distinction explicit throughout Workflow 3.** All W3 stage pages carry a persistent "Schedule FA — Calendar Year CY20XX, 1 January – 31 December" banner. FX conversion for peak and closing balances uses the 31 December rate, confirmed in W3 Stage 1, distinct from the 31 March rate used in Workflow 2. Each FA sub-table stage has an explicit Reviewed confirmation gate before the workflow can be locked, given the steep Black Money Act penalties for omissions.
+23. **Schedule TR derivation.** Auto-derive Schedule TR (tax relief) from Schedule FSI rows. Final entries feed the ITR JSON.
 
-Workflow 3 results are consumed by Workflow 4 (W4 Stage 3) for ODS and ITR JSON generation. If W3 is not locked when W4 generates the ITR JSON, Schedule FA entries are omitted and a notice is recorded.
-
-22. **Schedule FSI derivation.** Auto-derive Schedule FSI (foreign-source income) from the foreign-institution income rows collected in W2 Stages 5 (Foreign Interest), 7 (Foreign Dividends), 9 (Foreign Capital Gains), and 14 (Other Foreign Income). Group by country. For each country × income-head combination, show: income in foreign currency, INR equivalent (from the FX rate already computed), and tax paid in the source country (user-entered or extracted from statements). The user reviews and corrects before JSON generation.
-
-23. **Schedule TR derivation.** Auto-derive Schedule TR (tax relief) from Schedule FSI rows. For each FSI row where foreign tax was paid, propose a relief claim under Section 90 (DTAA country) or Section 91 (non-DTAA country). The applicable relief amount and rate are shown for user confirmation; the user may override. Final Schedule TR entries feed the ITR JSON.
-
-24. **Capital gains dual-mode computation.** For each institution with Capital Gains selected in W2 Stage 1 (or W3 Stage 2 for FA), the user specifies whether the institution's documents contain a **CG summary** (a pre-computed gains report from the broker) or a **transaction history** (raw buy/sell logs). In CG-summary mode, the LLM extracts the broker's pre-computed figures directly. In transaction-history mode, the LLM extracts each individual trade and Fisqo computes gains using FIFO matching, determines the holding period to classify STCG vs LTCG, and applies applicable rules (Section 111A/112A for domestic listed equities; grandfathering via FMV as on 31 January 2018 for LTCG on domestic listed equities acquired before that date; no indexation for foreign equities). In transaction-history mode, each gain row in the review table is expandable to show the full FIFO breakdown — the matched buy lot(s), acquisition cost, holding period, and the computed gain. The source mode is set once per institution in the relevant document discovery stage and applies to all rows from that institution; it cannot be changed at the row level. The row-level source indicator ("CG Statement" or "Computed from transactions") reflects the institution's chosen mode.
+24. **Capital gains dual-mode computation.** For each institution with Capital Gains, support two source modes: **CG summary** (broker's pre-computed gains report) or **transaction history** (raw buy/sell logs; Fisqo computes gains). In CG-summary mode, the LLM extracts the broker's pre-computed figures. In transaction-history mode, the LLM extracts individual trades and Fisqo computes gains using FIFO, classifies STCG vs LTCG by holding period, and applies applicable rules (Section 111A/112A for domestic listed equities; grandfathering via FMV as on 31 January 2018 for LTCG on pre-2018 domestic listed equities; no indexation for foreign equities).
 
 ## TDS and Tax Credits
 
@@ -138,26 +132,6 @@ Fisqo treats Form 26AS / AIS as the **authoritative source** for TDS data. Where
 | Salary TDS | 192 | Schedule TDS1 |
 | Non-salary TDS (interest, rent, professional fees, etc.) | 194A, 194I, 194J, 194C, others | Schedule TDS2 |
 | Tax Collected at Source | 206C series | Schedule TCS |
-
-### Data Sources and Fields Captured
-
-TDS data is drawn from three sources and matched 1-to-1 by TAN + section code + approximate amount in W2 Stage 16:
-
-1. **Bank and brokerage statements** (already parsed for income in W2 Stages 2–14) — carry per-transaction TDS amounts for FD interest, professional fees, equity redemption proceeds, and other income.
-2. **Capital gains statements** — broker-issued statements that may include TDS on equity or MF redemptions.
-3. **Form 26AS / AIS** — the authoritative government record of what each deductor deposited. This is what the portal validates against.
-
-Per matched entry: deductor name, TAN, section code, Head of Income (Salary / HP / CG / OS), statement gross income and TDS deducted, Form 26AS TDS deposited, match status, and TDS credit claimed.
-
-### Reconciliation
-
-For each matched pair, Fisqo shows both the statement amount and the Form 26AS amount. When they differ, a match-status indicator (⚠ Discrepancy) appears and the user picks which to prefer — "Use statement amount" or "Use Form 26AS amount" (default). For entries present in only one source, a status of ○ Statement only (deductor may not have deposited yet) or ○ Form 26AS only (statement not uploaded) is shown. The TDS credit claimed defaults to the preferred amount but remains editable. All rows editable; edited rows highlighted in amber.
-
-For TDS3 (property TDS from Form 16B / 16C): additionally captures PAN and Aadhaar of the buyer/tenant who deducted TDS.
-
-### Advance Tax and Self-Assessment Tax
-
-Advance tax (paid quarterly by 15 June, 15 September, 15 December, 15 March) and self-assessment tax (paid at filing time) are captured in W2 Stage 17. Per challan: BSR Code, Date of Deposit, Serial Number of Challan, Amount (₹). Pre-populated from Form 26AS where available. These feed Schedule IT in the ITR JSON.
 
 ## Design And User Experience
 
