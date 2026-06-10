@@ -38,6 +38,6 @@ We are systematically navigating the IT Portal (https://eportal.incometax.gov.in
 | Part B-TTI | Final tax computation and liability | W4 Stage 2 (new) | ✅ Done |
 | Schedule SI | Income at special rates | Auto-computed from CG/OS | ✅ Done (no Fisqo stage needed) |
 | Schedule AL | Assets and Liabilities | W2 Stage 20 | ✅ Done |
-| Part B-TI | Total income computation | — | 🔲 Pending |
+| Part B-TI | Total income computation | Auto-derived from income schedules | ✅ Done (no Fisqo stage needed) |
 
 Workflow: navigate portal → inspect all fields and Add Another forms → propose PRD changes → get user review → update PRD → commit. Pause after each schedule for user approval.
