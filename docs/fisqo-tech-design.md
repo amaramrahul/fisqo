@@ -107,6 +107,15 @@ DeepSeek (primary) always uses text extraction — it is text-only. Image mode r
 | CRUD (stage data, rows, config) | Synchronous REST | Simple; easy to test and cache |
 | LLM extraction jobs | SSE (`/api/v1/jobs/:id/events`) | Unidirectional server→client stream; no WebSocket handshake; works through HTTP/1.1 proxies |
 
+### AY Schema and Prompt Registry
+
+A `SchemaRegistry` factory in `packages/core/src/registry.ts` maps an Assessment Year string (e.g. `"AY2026"`) to:
+
+- The Zod schema bundle under `schemas/ay{year}/`
+- The prompt directory under `packages/pipeline/prompts/ay{year}/`
+
+Route handlers and LangGraph chains receive the AY from `Filing.assessmentYear` and call `SchemaRegistry.forYear(ay)` to obtain the correct schemas and prompts. No handler hard-codes a year. If the requested AY is not registered, the server returns `HTTP 422` with error code `UNSUPPORTED_AY`. On app update, the UI shows a banner if a filing's AY schema has been superseded by a newer bundled version, prompting the user to re-validate extracted data.
+
 ### Data Sourcing
 
 - User provides statement files (PDF, CSV, XLS) from their local machine.
@@ -150,8 +159,8 @@ Key entities (full schema in `packages/core/prisma/schema.prisma`):
 |---|---|---|
 | `TaxUser` | One per taxpayer — PAN, DOB, Aadhaar | Aadhaar AES-256-GCM encrypted |
 | `Filing` | One per AY per tax user | References AY for ITR schema selection |
-| `Stage` | One row per stage per filing | `(filingId, stageKey)` unique; `data` JSON holds stage output |
-| `Institution` | Document grouping + category selection | `cgMode` (summary/transactions), `pdfMode` (auto/image) per institution |
+| `Stage` | One row per stage per filing | `(filingId, stageKey)` unique; `status` enum (`NOT_STARTED \| IN_PROGRESS \| COMPLETE \| SKIPPED`) required column — `SKIPPED` records a conscious user bypass without blocking downstream stages; W4 routing requires all prerequisite stages to be `COMPLETE` or `SKIPPED` before unlocking; `data` JSON holds stage output |
+| `Institution` | Document grouping + category selection | `workflowScope: FY \| CY` — `FY` for Workflow 2 (April–March statements), `CY` for Workflow 3 (January–December FA statements); LangGraph chains receive only institutions matching the active workflow scope, preventing cross-contamination; `cgMode` (summary/transactions), `pdfMode` (auto/image) per institution |
 | `Document` | File path + exclusion flag per institution | — |
 | `IncomeRow` | Extracted or manually-added data row | `data` JSON for category-specific fields; `note` never sent to LLM |
 | `LlmJob` | One job per chain run | Tracks tokens, latency, `promptHash`, status FSM |
@@ -174,23 +183,66 @@ W2.1 (Doc Discovery)
                     └─► W2.19 (Schedule TR)
               └─► W3.3–6 (FA income, if started) ← explicit cross-workflow warning shown
 
-W3.2 (FA Doc Discovery)
-  └─► W3.3–6 (FA income extraction)
-        └─► W3.7–14 (FA sub-tables)
+W3.1 (FA Setup — Dec 31 FX rate confirmed)
+  └─► W3.2 (FA Doc Discovery)
+        └─► W3.3–6 (FA income extraction)
+              └─► W3.7–14 (FA sub-tables)
+                    └─► W3.15 (FA Review and Lock)
 ```
 
-LlmJob status FSM: `queued → running → succeeded | retrying → failed`
+W3.1 is the root dependency for all W3 calculations. Any user override to the December 31 FX rate cascades invalidation through W3.3–14. W3.15 can only be reached when all sub-table stages are `COMPLETE` or `SKIPPED`.
 
-### FIFO Capital Gains Eneadt
+LlmJob status FSM: `queued → running → succeeded | retrying → failed | superseded`
+
+### FIFO Capital Gains Engine
 
 Pure TypeScript in `packages/core/src/fifo.ts`, no LLM. Processes `TradeRow[]` into `CgSummaryRow[]` using FIFO lot matching, with 31 Jan 2018 FMV grandfathering for domestic listed equities. Foreign CG applies FX conversion at acquisition and sale dates separately.
+
+**Corporate action override interface:** The engine accepts an `overrides: TradeRow[]` parameter alongside the LLM-extracted rows. Override rows carry `rowType: 'corporate_action'` and fields: `date`, `actionType` (`SPLIT | BONUS | MERGER | SPINOFF`), quantity delta, and cost basis delta. Before lot-matching, the engine merges and date-sorts extracted rows and override rows; override rows take precedence over any extracted row with the same `(isin, date, actionType)` key. This injection point is populated from user-added rows in the W2 Stage 8 / W3 Stage 5 UI ("Add adjustment row") — required when the broker statement omits corporate-action entries.
 
 ### SBI FX Rate Data
 
 - Source: [`sbi-fx-ratekeeper`](https://github.com/sahilgupta/sbi-fx-ratekeeper/tree/main/csv_files) CSV files.
 - CSVs bundled under `data/fx-rates/` at release time; seeded into `FxRate` on first run.
 - On startup (background): download and re-seed only if `FxRate.lastFetchedAt` is older than 24 hours. Falls back to existing data if offline.
-- Look-up by currency + exact date; nearest prior date used if exact date missing.
+- Look-up by currency + exact date. The look-up function returns `{ rate: number, appliedDate: string, requestedDate: string, isFallback: boolean }`. When `isFallback: true` (weekend, bank holiday, or missing entry), the API includes this metadata in the response and the UI renders a tooltip: "Rate from [appliedDate] used — no rate available for [requestedDate]." This lets the user confirm the correct fallback rate was applied before filing.
+
+### W3 Lock Mechanism
+
+W3 Stage 15 ("FA Review and Lock") is the terminal node of the W3 dependency graph. When the user clicks "Confirm and Lock":
+
+- `Stage.status` for the W3.15 row is set to `COMPLETE` and a `lockedAt` ISO timestamp is written into `Stage.data`.
+- All W3 mutation routes (PUT/PATCH on `IncomeRow`, `Stage.data`, or `Institution` where `workflowScope = CY`) include a pre-handler guard: if `w3LockStage.lockedAt` is set and W4 has been initialised, the request is rejected with `HTTP 409 Conflict` and error code `W3_LOCKED`.
+- Async LLM job completions for W3 chains check the lock before writing results; any job that completes after the lock was set discards its output and transitions to status `superseded`.
+- **Unlock path**: the user clicks "Reopen W3" in W3.15, which clears `lockedAt` and resets W4 to `NOT_STARTED` with an explicit warning that any generated ODS/ITR JSON must be regenerated.
+
+### W4 Tax Computation Engine
+
+A dedicated, purely rule-based module in `packages/core/src/tax/`. No LLM involvement — all computations are deterministic formula executions over typed inputs.
+
+**Architecture:** DAG of pure TypeScript functions — each node takes typed inputs and returns typed outputs with no side effects, enabling isolated unit testing per node.
+
+**Computation nodes (in dependency order):**
+
+| Node | Inputs | Output |
+|---|---|---|
+| `computeSlabTax` | `totalIncome`, `regime` | tax before rebate |
+| `computeRebate87A` | `totalIncome`, `regime`, `taxBeforeRebate` | rebate (₹60,000 cap under NTR for income ≤ ₹12L) |
+| `computeSurcharge` | `totalIncome`, `taxAfterRebate` | surcharge + marginal relief |
+| `computeCess` | `taxAfterSurcharge` | 4% Health & Education Cess |
+| `computeAMTCredit` | `filingHistory` | credit u/s 115JD if applicable |
+| `computeRelief` | `foreignTaxPaid`, `scheduleFsi` | relief u/s 89/90/91 |
+| `computeCredits` | `tdsRows`, `advanceTaxRows`, `tcsRows` | total prepaid credits |
+| `compute234B` | `assessedTax`, `advanceTaxPaid`, `assessmentDate` | interest; quarterly due dates (Jun 15, Sep 15, Dec 15, Mar 15) are statutory constants in the module |
+| `compute234C` | `quarterlyShortfalls` | interest per quarter |
+| `compute234A` | `taxPayable`, `filingDate`, `dueDate` | interest; computed and shown only if filing date is after the due date |
+| `compute234F` | `totalIncome`, `filingDate`, `dueDate` | late fee (₹1,000 / ₹5,000 depending on income) |
+
+**Inputs sourced from:** W2 Stage 16/17 (TDS, advance tax), W2 Stage 19 (Schedule TR relief amounts), Part B-TI total income (auto-derived from income schedules).
+
+**UI positioning:** Computed values are shown with a banner: "These figures are computed by Fisqo for reference. Verify with a CA or authorised representative before filing." This is a user-facing disclaimer about responsibility — the computation is deterministic and fully implemented.
+
+**Testing:** Unit tests cover known CBDT examples, the 87A rebate cliff at ₹12L, the surcharge marginal relief band, nil advance tax (full 234B), and partial advance tax with one shortfall quarter (234C).
 
 ---
 
@@ -246,7 +298,7 @@ Tests written before implementation for every non-trivial component:
 - Explicit acknowledgement gate before the first cloud LLM job on a filing — user confirms that financial documents (PAN, account numbers, transaction data) will be transmitted to the configured endpoint.
 - User-supplied custom prompts (W2.1/W3.2) are sandboxed — appended after the system prompt, never replacing it; LLM output still goes through Zod regardless.
 - Document size checked before sending; user warned if approaching the provider's context limit.
-- Concurrent LLM job cap per session to prevent accidental cost spikes.
+- Single-worker job queue per session — new LLM job requests are enqueued, not parallelised. The `LlmJob` table tracks queue position; the UI shows "Queued (position N)" for waiting jobs. This prevents rate-limit exhaustion and gives the user clear visibility into pending cost before jobs run.
 
 **LLM output guardrails:**
 - Zod schema validation on every response before any application code touches it; failure moves the job to `failed`.
