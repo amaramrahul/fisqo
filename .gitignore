@@ -1,5 +1,5 @@
 # Environment
-.env
+.devcontainer/devcontainer.env
 .env.local
 
 # Editor
@@ -15,3 +15,4 @@ Thumbs.db
 
 # Claude Code
 .claude/settings.local.json
+.claude/worktrees/

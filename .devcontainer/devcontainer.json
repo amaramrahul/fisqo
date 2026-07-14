@@ -1,14 +1,18 @@
 {
   "name": "fisqo-dev-container",
   "build": { "dockerfile": "Dockerfile" },
+  "runArgs": ["--env-file", ".devcontainer/devcontainer.env"],
   "remoteUser": "node",
   "features": {
     "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {},
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
   "mounts": [
-    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.claude,target=/home/node/.claude,type=bind,consistency=cached"
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.claude,target=${localEnv:HOME}${localEnv:USERPROFILE}/.claude,type=bind,consistency=cached"
   ],
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "${localEnv:HOME}${localEnv:USERPROFILE}/.claude"
+  },
   // "postCreateCommand": "npm install",
   // "forwardPorts": [3000],
   "customizations": {
