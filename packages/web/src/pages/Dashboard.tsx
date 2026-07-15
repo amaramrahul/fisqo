@@ -6,11 +6,13 @@ import { AddTaxUserModal } from "../components/AddTaxUserModal.js";
 export function Dashboard() {
   const [taxUsers, setTaxUsers] = useState<TaxUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
     listTaxUsers()
       .then(setTaxUsers)
+      .catch(() => setError("Failed to load tax users. Is the Fisqo server running?"))
       .finally(() => setLoading(false));
   }, []);
 
@@ -21,6 +23,10 @@ export function Dashboard() {
 
   if (loading) {
     return <p>Loading...</p>;
+  }
+
+  if (error) {
+    return <p role="alert">{error}</p>;
   }
 
   return (
