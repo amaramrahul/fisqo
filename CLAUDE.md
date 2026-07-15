@@ -8,9 +8,9 @@ Fisqo is a local web application that helps Indian resident individuals file inc
 
 The full product specification is in [docs/fisqo-prd.md](docs/fisqo-prd.md). Read it before making significant architectural decisions.
 
-## Guidlines
+## Development Guidelines
 
-* Whenver add new features, always refer [docs/fisqo-tech-design.md](docs/fisqo-tech-design.md) and [fisqo-ux-design.prd](fisqo-ux-design.prd) and update these docs upon implementation of the feature
+* Whenver adding new features, always refer [docs/fisqo-tech-design.md](docs/fisqo-tech-design.md) and [fisqo-ux-design.prd](fisqo-ux-design.prd) and update these docs upon implementation of the feature
 
 ## Dev environment
 
