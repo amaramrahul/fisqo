@@ -22,8 +22,7 @@ Read [docs/fisqo-tech-design.md](docs/fisqo-tech-design.md) and [docs/fisqo-ux-d
 Before running any "finish branch" / PR-creation workflow, explicitly confirm each item below (state pass/fail for each, don't skip silently):
 
 1. [docs/fisqo-tech-design.md](docs/fisqo-tech-design.md) and [docs/fisqo-ux-design.md](docs/fisqo-ux-design.md) updated to reflect what was actually built.
-2. If this work has an associated GitHub issue and a spec file was written for it (e.g. via `docs/superpowers/specs/`), the spec file is **committed as part of the PR**, and the associated GitHub issue has a comment linking to it at its repo path (not pasted inline — link to the file so it stays in sync). Implementation plans (task-by-task execution breakdowns) are process scaffolding, not durable design docs, and do not need to be committed or linked.
-3. Tests exist per the Testing Policy above and the full suite passes.
+2. Tests exist per the Testing Policy above and the full suite passes.
 
 This checklist is project-specific and is not covered by generic branch-completion skills (e.g. finishing-a-development-branch) — it must be checked separately, not assumed to be part of their process.
 
