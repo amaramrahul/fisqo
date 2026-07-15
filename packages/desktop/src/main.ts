@@ -7,7 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 3000;
 
 let apiProcess: ChildProcess | undefined;
-let isRestarting = false;
+let launching = false;
 
 function startApiServer(): void {
   apiProcess = spawn(
@@ -36,9 +36,26 @@ function createWindow(): void {
   win.loadURL(`http://localhost:${PORT}`);
 }
 
+function launchOrRestart(): void {
+  if (launching) return;
+  launching = true;
+  try {
+    startApiServer();
+  } catch (err) {
+    launching = false;
+    throw err;
+  }
+  setTimeout(() => {
+    try {
+      createWindow();
+    } finally {
+      launching = false;
+    }
+  }, 1000);
+}
+
 app.whenReady().then(() => {
-  startApiServer();
-  setTimeout(createWindow, 1000);
+  launchOrRestart();
 });
 
 app.on("window-all-closed", () => {
@@ -53,13 +70,8 @@ app.on("will-quit", () => {
 });
 
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0 && !isRestarting) {
-    isRestarting = true;
-    startApiServer();
-    setTimeout(() => {
-      createWindow();
-      isRestarting = false;
-    }, 1000);
+  if (BrowserWindow.getAllWindows().length === 0) {
+    launchOrRestart();
   }
 });
 
