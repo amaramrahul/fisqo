@@ -10,7 +10,11 @@ The full product specification is in [docs/fisqo-prd.md](docs/fisqo-prd.md). Rea
 
 ## Development Guidelines
 
-* Whenver adding new features, always refer [docs/fisqo-tech-design.md](docs/fisqo-tech-design.md) and [fisqo-ux-design.prd](fisqo-ux-design.prd) and update these docs upon implementation of the feature
+* Whenver adding new features or making changes:
+    * always refer [docs/fisqo-tech-design.md](docs/fisqo-tech-design.md) and [fisqo-ux-design.prd](fisqo-ux-design.prd)
+* Upon implementation of a feature or before raising a PR:
+    * Update [docs/fisqo-tech-design.md](docs/fisqo-tech-design.md) and [fisqo-ux-design.prd](fisqo-ux-design.prd)
+    * If there is a associated GitHub user story and a spec file, attach the spec file to the user story for future reference.
 
 ## Dev environment
 
