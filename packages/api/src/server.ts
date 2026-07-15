@@ -11,7 +11,7 @@ const app = createApp(prisma);
 const webDist = path.resolve(process.cwd(), "../web/dist");
 if (fs.existsSync(webDist)) {
   app.use(express.static(webDist));
-  app.get("*", (_req, res) => {
+  app.get("/*splat", (_req, res) => {
     res.sendFile(path.join(webDist, "index.html"));
   });
 }
