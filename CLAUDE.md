@@ -8,7 +8,11 @@ Fisqo is a local web application that helps Indian resident individuals file inc
 
 The full product specification is in [docs/fisqo-prd.md](docs/fisqo-prd.md). Read it before making significant architectural decisions.
 
-## Development Guidelines
+## Guidelines
+
+### Writing style
+
+Never use the em dash character. Use a plain dash "-" instead.
 
 ### Before starting any feature or change
 
@@ -17,20 +21,54 @@ Read [docs/fisqo-tech-design.md](docs/fisqo-tech-design.md) and [docs/fisqo-ux-d
 - Does the change fit the documented architecture (monorepo layout, API versioning, error shape, stage-dependency model), or does it require a documented deviation?
 - Does the UX design doc already describe the screen/flow this touches? Match its structure and terminology instead of inventing new ones.
 
-### Before opening a PR — mandatory checklist
+### Technical decision-making
+
+When making technical decisions, do not give much weight to development cost. Instead, prefer quality, simplicity, robustness, scalability, and long-term maintainability.
+
+### Bug fixes
+
+Always start by reproducing the bug in an end-to-end setting as closely aligned with how an end user experiences it. This makes sure you find the real problem so the fix actually solves it.
+
+### Before opening a PR - mandatory checklist
 
 Before running any "finish branch" / PR-creation workflow, explicitly confirm each item below (state pass/fail for each, don't skip silently):
 
 1. [docs/fisqo-tech-design.md](docs/fisqo-tech-design.md) and [docs/fisqo-ux-design.md](docs/fisqo-ux-design.md) updated to reflect what was actually built.
 2. Tests exist per the Testing Policy above and the full suite passes.
 
-This checklist is project-specific and is not covered by generic branch-completion skills (e.g. finishing-a-development-branch) — it must be checked separately, not assumed to be part of their process.
+This checklist is project-specific and is not covered by generic branch-completion skills (e.g. finishing-a-development-branch) - it must be checked separately, not assumed to be part of their process.
+
+### Commit messages
+
+Never auto-add your agent name as co-author.
 
 ## Dev environment
 
-The repo ships with a devcontainer ([.devcontainer/](.devcontainer/)). Open in VS Code Dev Containers or GitHub Codespaces and the environment is ready.
+The repo ships with a devcontainer ([.devcontainer/](.devcontainer/)). Open in VS Code Dev Containers or GitHub Codespaces and the environment is ready. Requires Node >=24.
 
-No build/test commands exist yet - the project is pre-implementation.
+The repo is an npm workspaces monorepo:
+
+```
+packages/
+  core/     - Prisma/SQLite schema, shared Zod validation (@fisqo/core)
+  api/      - Express REST server (@fisqo/api)
+  web/      - React/Vite SPA (@fisqo/web)
+  desktop/  - Electron shell that spawns the api and opens it in a window (@fisqo/desktop)
+```
+
+`packages/core` has no runtime process of its own; `packages/api` and `packages/web` depend on it and must have it built first - the root `build` script handles this ordering automatically.
+
+Common commands (all runnable from the repo root):
+- Install everything: `npm install`
+- Build all packages in dependency order: `npm run build`
+- Run core unit tests: `npm test --workspace=packages/core`
+- Run api integration tests (against a real, freshly migrated SQLite test database): `npm test --workspace=packages/api`
+- Run the api dev server: `npm run dev --workspace=packages/api`
+- Run the web dev server (Vite, proxies `/api` to the api dev server on port 3000): `npm run dev --workspace=packages/web`
+- Run the web e2e suite (Playwright; auto-starts a freshly migrated api instance and the web dev server): `npm run test:e2e --workspace=packages/web`
+- Run the desktop Electron shell (build everything first): `npm run build && npm start --workspace=packages/desktop`
+
+TypeScript is pinned to exact `5.7.3` and Prisma/`@prisma/client` to exact `6.19.2` across every package - do not let `npm install` float these to a newer major version; both have caused breaking-change incidents in this codebase before.
 
 ## ITR-2 AY2026 Portal Schedule Review Status
 
