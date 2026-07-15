@@ -17,3 +17,11 @@ Thumbs.db
 .claude/settings.local.json
 .claude/worktrees/
 docs/superpowers/
+
+# Node
+node_modules/
+dist/
+
+# Prisma / SQLite
+*.sqlite
+*.sqlite-journal
