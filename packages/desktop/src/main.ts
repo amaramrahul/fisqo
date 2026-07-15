@@ -7,6 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 3000;
 
 let apiProcess: ChildProcess | undefined;
+let isRestarting = false;
 
 function startApiServer(): void {
   apiProcess = spawn(
@@ -52,9 +53,13 @@ app.on("will-quit", () => {
 });
 
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
+  if (BrowserWindow.getAllWindows().length === 0 && !isRestarting) {
+    isRestarting = true;
     startApiServer();
-    setTimeout(createWindow, 1000);
+    setTimeout(() => {
+      createWindow();
+      isRestarting = false;
+    }, 1000);
   }
 });
 
