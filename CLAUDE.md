@@ -10,11 +10,22 @@ The full product specification is in [docs/fisqo-prd.md](docs/fisqo-prd.md). Rea
 
 ## Development Guidelines
 
-* Whenver adding new features or making changes:
-    * always refer [docs/fisqo-tech-design.md](docs/fisqo-tech-design.md) and [fisqo-ux-design.prd](fisqo-ux-design.prd)
-* Upon implementation of a feature or before raising a PR:
-    * Update [docs/fisqo-tech-design.md](docs/fisqo-tech-design.md) and [fisqo-ux-design.prd](fisqo-ux-design.prd)
-    * If there is a associated GitHub user story and a spec file, attach the spec file to the user story for future reference.
+### Before starting any feature or change
+
+Read [docs/fisqo-tech-design.md](docs/fisqo-tech-design.md) and [docs/fisqo-ux-design.md](docs/fisqo-ux-design.md) in full before writing a design/spec or touching code. Specifically check:
+- Does an existing component, package, schema, or API endpoint already cover part of this? Reuse it rather than re-deriving it in a spec.
+- Does the change fit the documented architecture (monorepo layout, API versioning, error shape, stage-dependency model), or does it require a documented deviation?
+- Does the UX design doc already describe the screen/flow this touches? Match its structure and terminology instead of inventing new ones.
+
+### Before opening a PR — mandatory checklist
+
+Before running any "finish branch" / PR-creation workflow, explicitly confirm each item below (state pass/fail for each, don't skip silently):
+
+1. [docs/fisqo-tech-design.md](docs/fisqo-tech-design.md) and [docs/fisqo-ux-design.md](docs/fisqo-ux-design.md) updated to reflect what was actually built.
+2. If this work has an associated GitHub issue and a spec/plan file was written for it, the spec has been attached to that issue (as a committed file link, or as an issue comment if the spec isn't committed) — do this *before* creating the PR, not after.
+3. Tests exist per the Testing Policy above and the full suite passes.
+
+This checklist is project-specific and is not covered by generic branch-completion skills (e.g. finishing-a-development-branch) — it must be checked separately, not assumed to be part of their process.
 
 ## Dev environment
 
