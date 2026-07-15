@@ -12,13 +12,7 @@
   ],
   "containerEnv": {
     "CLAUDE_CONFIG_DIR": "${localEnv:HOME}${localEnv:USERPROFILE}/.claude"
-  },
-  // "postCreateCommand": "npm install",
-  // "forwardPorts": [3000],
-  "customizations": {
-    "vscode": {
-      "settings": {},
-      "extensions": ["streetsidesoftware.code-spell-checker"]
-    }
   }
+  // "postCreateCommand": "npm install"
+  // "forwardPorts": [3000]
 }
