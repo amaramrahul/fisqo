@@ -8,11 +8,15 @@ Fisqo is a local web application that helps Indian resident individuals file inc
 
 The full product specification is in [docs/fisqo-prd.md](docs/fisqo-prd.md). Read it before making significant architectural decisions.
 
+## Guidlines
+
+* Whenver add new features, always refer [docs/fisqo-tech-design.md](docs/fisqo-tech-design.md) and [fisqo-ux-design.prd](fisqo-ux-design.prd) and update these docs upon implementation of the feature
+
 ## Dev environment
 
-The repo ships with a devcontainer ([.devcontainer/](.devcontainer/)) based on `mcr.microsoft.com/devcontainers/base:noble` with the Claude Code feature pre-installed. Open in VS Code Dev Containers or GitHub Codespaces and the environment is ready.
+The repo ships with a devcontainer ([.devcontainer/](.devcontainer/)). Open in VS Code Dev Containers or GitHub Codespaces and the environment is ready.
 
-No build/test commands exist yet — the project is pre-implementation.
+No build/test commands exist yet - the project is pre-implementation.
 
 ## ITR-2 AY2026 Portal Schedule Review Status
 
