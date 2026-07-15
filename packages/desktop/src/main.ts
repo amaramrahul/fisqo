@@ -17,6 +17,10 @@ function startApiServer(): void {
       stdio: "inherit",
     }
   );
+  apiProcess.on("error", (err) => {
+    console.error("Failed to start Fisqo API server:", err);
+    app.quit();
+  });
 }
 
 function createWindow(): void {
@@ -42,3 +46,22 @@ app.on("window-all-closed", () => {
     app.quit();
   }
 });
+
+app.on("will-quit", () => {
+  apiProcess?.kill();
+});
+
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    startApiServer();
+    setTimeout(createWindow, 1000);
+  }
+});
+
+function shutdown(): void {
+  apiProcess?.kill();
+  process.exit(0);
+}
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
