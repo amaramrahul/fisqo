@@ -4,8 +4,9 @@
   "runArgs": ["--env-file", ".devcontainer/devcontainer.env"],
   "remoteUser": "node",
   "features": {
-    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {},
-    "ghcr.io/devcontainers/features/github-cli:1": {}
+    "ghcr.io/anthropics/devcontainer-features/claude-code": {},
+    "ghcr.io/devcontainers/features/github-cli": {},
+    "ghcr.io/devcontainers/features/common-utils": {}
   },
   "mounts": [
     "source=${localEnv:HOME}${localEnv:USERPROFILE}/.claude,target=${localEnv:HOME}${localEnv:USERPROFILE}/.claude,type=bind,consistency=cached"

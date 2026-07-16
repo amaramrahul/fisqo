@@ -16,3 +16,7 @@ Thumbs.db
 # Claude Code
 .claude/settings.local.json
 .claude/worktrees/
+
+# Claude Code - Superpowers plugin
+docs/superpowers/plans/
+.superpowers/
