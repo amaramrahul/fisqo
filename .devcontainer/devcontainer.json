@@ -9,12 +9,10 @@
     "ghcr.io/anthropics/devcontainer-features/claude-code": {}
   },
   "mounts": [
-    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.claude,target=${localEnv:HOME}${localEnv:USERPROFILE}/.claude,type=bind,consistency=cached",
-    "source=${localEnv:XDG_RUNTIME_DIR}/bus,target=/run/user/1000/bus,type=bind"
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.claude,target=${localEnv:HOME}${localEnv:USERPROFILE}/.claude,type=bind,consistency=cached"
   ],
   "containerEnv": {
-    "CLAUDE_CONFIG_DIR": "${localEnv:HOME}${localEnv:USERPROFILE}/.claude",
-    "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"
+    "CLAUDE_CONFIG_DIR": "${localEnv:HOME}${localEnv:USERPROFILE}/.claude"
   },
-  "postCreateCommand": "sudo apt update && sudo env DEBIAN_FRONTEND=noninteractive apt install -y vim tmux libnotify-bin"
+  "postCreateCommand": "sudo apt update && sudo env DEBIAN_FRONTEND=noninteractive apt install -y vim tmux"
 }
