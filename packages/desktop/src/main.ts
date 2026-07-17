@@ -60,7 +60,7 @@ function createWindow(): void {
   void window.loadURL(APP_URL);
 }
 
-void app.whenReady().then(async () => {
+app.whenReady().then(async () => {
   startApi();
   await waitForApi();
   createWindow();
@@ -68,6 +68,10 @@ void app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+}).catch((error: unknown) => {
+  console.error('Fisqo failed to start:', error);
+  apiProcess?.kill();
+  app.quit();
 });
 
 app.on('window-all-closed', () => {
