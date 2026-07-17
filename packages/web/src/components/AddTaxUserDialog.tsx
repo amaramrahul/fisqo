@@ -20,8 +20,16 @@ export function AddTaxUserDialog({ open, onClose, onCreated }: AddTaxUserDialogP
     const dialog = dialogRef.current;
     if (dialog === null) return;
     // showModal gives focus trapping and Esc-to-close for free.
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
+    if (open) {
+      if (!dialog.open) dialog.showModal();
+    } else {
+      if (dialog.open) dialog.close();
+      // Clear stale input/errors so a later reopen (after a cancel or an
+      // error) starts from a blank form instead of the previous attempt.
+      setPan('');
+      setDob('');
+      setError(null);
+    }
   }, [open]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {

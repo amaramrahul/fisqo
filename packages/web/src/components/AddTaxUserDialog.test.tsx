@@ -101,4 +101,31 @@ describe('AddTaxUserDialog', () => {
     expect(createSpy).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
   });
+
+  it('clears the PAN, DOB, and error state when the dialog closes and reopens', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(taxUsersApi, 'createTaxUser').mockRejectedValue(
+      new ApiRequestError(409, {
+        code: 'PAN_ALREADY_EXISTS',
+        message: 'A tax user with PAN ABCDE1234F already exists.',
+      }),
+    );
+
+    const { rerender } = render(
+      <AddTaxUserDialog open onClose={vi.fn()} onCreated={vi.fn()} />,
+    );
+
+    await user.type(screen.getByLabelText(/pan/i), 'ABCDE1234F');
+    await user.type(screen.getByLabelText(/date of birth/i), '1985-03-15');
+    await user.click(screen.getByRole('button', { name: /save/i }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/already exists/i);
+
+    rerender(<AddTaxUserDialog open={false} onClose={vi.fn()} onCreated={vi.fn()} />);
+    rerender(<AddTaxUserDialog open onClose={vi.fn()} onCreated={vi.fn()} />);
+
+    expect(screen.getByLabelText(/pan/i)).toHaveValue('');
+    expect(screen.getByLabelText(/date of birth/i)).toHaveValue('');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
 });

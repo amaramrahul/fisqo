@@ -7,7 +7,7 @@
   "engines": { "node": ">=24" },
   "scripts": {
     "build:core": "npm run build --workspace @fisqo/core",
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build:core && npm run build --workspaces --if-present",
     "typecheck": "npm run build && npm run typecheck --workspace @fisqo/web",
     "pretest": "npm run build:core",
     "test": "vitest run",
