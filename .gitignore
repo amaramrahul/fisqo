@@ -20,3 +20,17 @@ Thumbs.db
 # Claude Code - Superpowers plugin
 docs/superpowers/plans/
 .superpowers/
+
+# Build output
+node_modules/
+dist/
+packages/core/src/generated/
+*.tsbuildinfo
+
+# Local databases
+*.db
+*.db-journal
+
+# Test output
+playwright-report/
+test-results/

@@ -34,7 +34,7 @@ Always start by reproducing the bug in an end-to-end setting as closely aligned 
 Before running any "finish branch" / PR-creation workflow, explicitly confirm each item below (state pass/fail for each, don't skip silently):
 
 1. [docs/fisqo-tech-design.md](docs/fisqo-tech-design.md) and [docs/fisqo-ux-design.md](docs/fisqo-ux-design.md) updated to reflect what was actually built.
-2. Tests exist per the Testing Policy above and the full suite passes.
+2. Tests exist per the QA section of [docs/fisqo-tech-design.md](docs/fisqo-tech-design.md) (unit, integration, end-to-end, snapshot) and the full suite passes.
 
 This checklist is project-specific and is not covered by generic branch-completion skills (e.g. finishing-a-development-branch) - it must be checked separately, not assumed to be part of their process.
 
@@ -46,7 +46,17 @@ Never auto-add your agent name as co-author.
 
 The repo ships with a devcontainer ([.devcontainer/](.devcontainer/)). Open in VS Code Dev Containers or GitHub Codespaces and the environment is ready.
 
-No build/test commands exist yet - the project is pre-implementation.
+Commands (run from the repo root):
+
+```bash
+npm install          # install all workspace dependencies
+npm run build        # build every package (generates the Prisma client first)
+npm run typecheck    # tsc --build across all packages
+npm test             # unit, integration, and component tests (builds core first)
+npm run test:e2e     # Playwright end-to-end suite
+```
+
+The app is launched with `npm run start --workspace @fisqo/desktop`, which spawns the API and opens the Electron window.
 
 ## ITR-2 AY2026 Portal Schedule Review Status
 
