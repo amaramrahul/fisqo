@@ -1,4 +1,5 @@
 import { render, screen, waitForElementToBeRemoved } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TaxUserDto } from '@fisqo/core';
 import * as taxUsersApi from '../api/tax-users.js';
@@ -78,5 +79,29 @@ describe('Dashboard', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent(/could not load tax users/i);
     expect(screen.queryByRole('heading', { name: /no tax users yet/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('Dashboard add tax user flow', () => {
+  it('opens the dialog, creates a tax user, and reloads the list', async () => {
+    const user = userEvent.setup();
+    const listSpy = vi
+      .spyOn(taxUsersApi, 'listTaxUsers')
+      .mockResolvedValueOnce({ data: [], nextCursor: null })
+      .mockResolvedValueOnce({ data: [aTaxUser()], nextCursor: null });
+    vi.spyOn(taxUsersApi, 'createTaxUser').mockResolvedValue({ data: aTaxUser() });
+
+    render(<Dashboard />);
+    await waitForElementToBeRemoved(() => screen.queryByText(/loading/i));
+    expect(screen.getByRole('heading', { name: /no tax users yet/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /add new tax user/i }));
+    await user.type(screen.getByLabelText(/pan/i), 'ABCDE1234F');
+    await user.type(screen.getByLabelText(/date of birth/i), '1985-03-15');
+    await user.click(screen.getByRole('button', { name: /save/i }));
+
+    expect(await screen.findByRole('heading', { name: 'ABCDE1234F' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /no tax users yet/i })).not.toBeInTheDocument();
+    expect(listSpy).toHaveBeenCalledTimes(2);
   });
 });

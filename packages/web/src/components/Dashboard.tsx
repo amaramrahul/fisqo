@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { TaxUserDto } from '@fisqo/core';
 import { listTaxUsers } from '../api/tax-users.js';
+import { AddTaxUserDialog } from './AddTaxUserDialog.js';
 import { EmptyState } from './EmptyState.js';
 import { TaxUserSection } from './TaxUserSection.js';
 
 export function Dashboard() {
   const [taxUsers, setTaxUsers] = useState<TaxUserDto[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -29,7 +31,9 @@ export function Dashboard() {
     <main className="dashboard">
       <header className="dashboard-header">
         <h1>Fisqo</h1>
-        <button type="button">Add new tax user</button>
+        <button type="button" onClick={() => setDialogOpen(true)}>
+          Add new tax user
+        </button>
       </header>
 
       {loadError !== null && <p role="alert">{loadError}</p>}
@@ -45,6 +49,15 @@ export function Dashboard() {
           ))}
         </ul>
       )}
+
+      <AddTaxUserDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        onCreated={() => {
+          setDialogOpen(false);
+          void load();
+        }}
+      />
     </main>
   );
 }
