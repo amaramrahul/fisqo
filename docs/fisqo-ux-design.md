@@ -12,7 +12,7 @@ Covers identity, LLM configuration, and filing-scope settings. Must be complete 
 
 **W1 Stage 1 — LLM Configuration.** User enters LLM configuration (local model or cloud provider with API key). This is the only globally-persisted setting, shared across all filings. Shown as pre-complete on subsequent filings if already configured.
 
-**W1 Stage 2 — Tax User.** User selects an existing tax user or adds a new one. Fields stored per tax user: PAN, Date of Birth, Aadhaar Number (stored in plain text in the local database; last 4 digits shown in UI after entry).
+**W1 Stage 2 - Tax User.** User selects an existing tax user or adds a new one. Fields stored per tax user: PAN, Date of Birth, Aadhaar Number (stored in plain text in the local database; last 4 digits shown in UI after entry).
 
 **W1 Stage 3 — Filing Details.** User enters filing-scoped information: First Name, Middle Name (optional), Last Name; structured primary address (Flat/Door/Block No, Premises/Building, Road/Street, Area/Locality, Town/City/District, State, Country, PIN Code); contact details (Primary Email *, Primary Mobile with country code *, Phone with STD/ISD code, Secondary Email, Secondary Mobile); Financial Year; path to the FY statements directory. PAN is inherited from the tax user.
 
