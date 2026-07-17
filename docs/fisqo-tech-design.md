@@ -13,7 +13,7 @@
 | **LLM Pipeline** | LangGraph.js | Document classification and income extraction chains; one chain per extraction category |
 | **ORM / DB** | Prisma + SQLite | All app state persisted locally; migrations applied on startup |
 | **File System Layer** | Node.js `fs` | Reads user-supplied statement directories; path-sanitised at API boundary |
-| **Desktop Shell** | Electron | Spawns Express as child process; opens `localhost:3000` in browser; handles native OS interactions (file picker) |
+| **Desktop Shell** | Electron | Spawns Express as a child process; renders the SPA in a `BrowserWindow` at `localhost:3000`; handles native OS interactions (file picker) |
 
 **Monorepo layout:**
 ```
@@ -38,7 +38,7 @@ docs/
 Electron app — bundles Node.js runtime + Express + React build. Installs like a native app on Mac/Windows/Linux. No prerequisites for end users.
 
 - Electron main process spawns the Express server as a child process on a fixed local port.
-- Opens `http://localhost:3000` in the user's default browser on launch.
+- Renders `http://localhost:3000` in an Electron `BrowserWindow` on launch. The SPA is not opened in the user's default browser: `contextIsolation` and the preload bridge that native OS access depends on exist only inside a `BrowserWindow`. Because Express serves the SPA over loopback, the UI is also reachable from a local browser, but only the `BrowserWindow` is a supported surface, and only it has the IPC bridge.
 - Native OS access (file picker, app data directory) via Electron IPC with `contextIsolation: true`.
 
 ### Config File
@@ -157,7 +157,7 @@ Key entities (full schema in `packages/core/prisma/schema.prisma`):
 
 | Entity | Purpose | Key design notes |
 |---|---|---|
-| `TaxUser` | One per taxpayer — PAN, DOB, Aadhaar | Aadhaar AES-256-GCM encrypted |
+| `TaxUser` | One per taxpayer - PAN, DOB, Aadhaar | PAN carries a UNIQUE index and is canonicalised to uppercase; `dob` is an ISO `YYYY-MM-DD` string, not a `DateTime`, so it cannot shift across timezones |
 | `Filing` | One per AY per tax user | References AY for ITR schema selection |
 | `Stage` | One row per stage per filing | `(filingId, stageKey)` unique; `status` enum (`NOT_STARTED \| IN_PROGRESS \| COMPLETE \| SKIPPED`) required column — `SKIPPED` records a conscious user bypass without blocking downstream stages; W4 routing requires all prerequisite stages to be `COMPLETE` or `SKIPPED` before unlocking; `data` JSON holds stage output |
 | `Institution` | Document grouping + category selection | `workflowScope: FY \| CY` — `FY` for Workflow 2 (April–March statements), `CY` for Workflow 3 (January–December FA statements); LangGraph chains receive only institutions matching the active workflow scope, preventing cross-contamination; `cgMode` (summary/transactions), `pdfMode` (auto/image) per institution |
@@ -289,10 +289,10 @@ Tests written before implementation for every non-trivial component:
 ## Security
 
 - LLM API key stored in plain-text JSON config file at the OS app data directory; users should treat this file as a credential.
-- PAN and Aadhaar stored AES-256-GCM encrypted in SQLite.
+- PAN and Aadhaar are stored in plain text in SQLite. Fisqo is a local, single-user application with no master password, so any encryption key would have to live on the same disk as the database; encrypting at rest would not protect against an attacker who already has read access to the user's machine. The local SQLite file is the trust boundary, consistent with the LLM API key above. Aadhaar is masked to its last 4 digits in the UI after entry, which is a shoulder-surfing defence rather than a storage control.
 - File path sanitisation: all user-supplied paths resolved to absolute and checked against allowed roots before any `fs` operation; directory traversal rejected with HTTP 400.
 - Electron: `contextIsolation: true`, `nodeIntegration: false`; IPC used for all native OS access.
-- Express binds to `127.0.0.1` only; no inbound traffic from the network.
+- Express binds to `127.0.0.1` only; no inbound traffic from the network. Loopback binding does not by itself prevent a page in the user's own browser from issuing a cross-origin request to the API, nor a DNS-rebinding attack. Every state-changing request must therefore carry an `Origin` or `Referer` resolving to a loopback hostname, and every request's `Host` header is validated as loopback; violations are rejected with `HTTP 403` and error code `FORBIDDEN_ORIGIN`.
 
 **LLM input guardrails:**
 - Explicit acknowledgement gate before the first cloud LLM job on a filing — user confirms that financial documents (PAN, account numbers, transaction data) will be transmitted to the configured endpoint.

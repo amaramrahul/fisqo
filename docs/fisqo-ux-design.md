@@ -12,7 +12,7 @@ Covers identity, LLM configuration, and filing-scope settings. Must be complete 
 
 **W1 Stage 1 — LLM Configuration.** User enters LLM configuration (local model or cloud provider with API key). This is the only globally-persisted setting, shared across all filings. Shown as pre-complete on subsequent filings if already configured.
 
-**W1 Stage 2 — Tax User.** User selects an existing tax user or adds a new one. Fields stored per tax user: PAN, Date of Birth, Aadhaar Number (stored encrypted; last 4 digits shown in UI).
+**W1 Stage 2 — Tax User.** User selects an existing tax user or adds a new one. Fields stored per tax user: PAN, Date of Birth, Aadhaar Number (stored in plain text in the local database; last 4 digits shown in UI after entry).
 
 **W1 Stage 3 — Filing Details.** User enters filing-scoped information: First Name, Middle Name (optional), Last Name; structured primary address (Flat/Door/Block No, Premises/Building, Road/Street, Area/Locality, Town/City/District, State, Country, PIN Code); contact details (Primary Email *, Primary Mobile with country code *, Phone with STD/ISD code, Secondary Email, Secondary Mobile); Financial Year; path to the FY statements directory. PAN is inherited from the tax user.
 
@@ -282,6 +282,8 @@ The user can regenerate these files at any time from this stage.
 ### UI Surfaces
 
 **Dashboard** — top-level view, grouped by tax user (PAN). An **Add new tax user** button at the top prompts for a PAN and creates a new tax user section. Each tax user section lists the financial years for which a filing has been initiated. For each filing, four workflow cards are shown:
+
+When no tax users exist, the dashboard shows an empty state instead of the grouped list: a short description of what Fisqo does and a prompt to add the first tax user. The **Add new tax user** button is present in both the empty and populated states. Each tax user section is headed by its PAN; a section with no filings yet shows its own empty state.
 
 ```
 [W1] Personal Information          ● Complete
