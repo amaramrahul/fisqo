@@ -135,6 +135,7 @@ GET  /api/v1/tax-users   → 200 { data: TaxUser[], nextCursor: null }
 POST /api/v1/tax-users   → 201 { data: TaxUser }
                            422 { code: "VALIDATION_ERROR",   message, details }
                            409 { code: "PAN_ALREADY_EXISTS", message }
+                           403 { code: "FORBIDDEN_ORIGIN",   message }
                            500 { code: "INTERNAL_ERROR",     message }
 ```
 
@@ -161,6 +162,23 @@ A single dashboard screen.
 
 Electron main process spawns the Express API as a child process on the fixed local port and renders the SPA in a `BrowserWindow` with `contextIsolation: true` and `nodeIntegration: false`. Express binds to `127.0.0.1` only, per tech design line 295.
 
+### SPA delivery and loopback exposure
+
+Express serves both the React static build and the API from the same origin, per tech design line 12. The `BrowserWindow` loads `http://127.0.0.1:3000`. Same-origin delivery means no CORS layer, and the Vite dev proxy makes development mirror production exactly.
+
+A consequence worth stating explicitly, because it is easy to miss: **the SPA is reachable at `localhost:3000` from any browser on the same machine.** This is not a network exposure - line 295 binds loopback only - but it is a local one, and it is accepted deliberately. It also serves as a useful debugging affordance.
+
+The preload bridge is a property of the `BrowserWindow`, not of the URL. Electron's window therefore gets `contextIsolation` and the native file-picker IPC; a local browser hitting the same URL gets the SPA without the bridge. The two entry points are not equivalent, and only the Electron one is a supported surface.
+
+### Origin-check middleware
+
+A loopback HTTP server is reachable by any page the user visits in their everyday browser. Browsers block *reading* a cross-origin response without CORS headers, but a cross-origin `POST` is still *delivered*, so a malicious page could create tax users. DNS rebinding can go further and defeat naive host checks to read data back. Given that this application stores plain-text PAN, Aadhaar, and full financial statements, the API mitigates both:
+
+- Every state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) must carry an `Origin` or `Referer` header matching the expected loopback origin. Mismatched or absent values are rejected with `403 FORBIDDEN_ORIGIN`.
+- The `Host` header is validated against the expected loopback host, which is what defeats DNS rebinding: a rebound request arrives carrying the attacker's hostname, not `127.0.0.1`.
+
+This middleware is written once here and every later endpoint inherits it, which is precisely why it belongs in the first slice rather than being retrofitted across a finished API.
+
 ---
 
 ## Testing
@@ -170,7 +188,7 @@ Tests precede implementation at each layer, per the tech design's TDD mandate (l
 | Layer | Coverage |
 |---|---|
 | Unit | `core` Zod schema: valid PAN accepted; lowercase canonicalised to uppercase; malformed PAN rejected; DOB format enforced; DOB required |
-| Integration | Empty list returns `{ data: [], nextCursor: null }`; create returns 201 and persists; subsequent list returns the created user; duplicate PAN returns 409; malformed input returns 422 |
+| Integration | Empty list returns `{ data: [], nextCursor: null }`; create returns 201 and persists; subsequent list returns the created user; duplicate PAN returns 409; malformed input returns 422; a `POST` carrying a foreign `Origin` returns 403; a request carrying a foreign `Host` returns 403 |
 | Component | Empty state renders its descriptive copy; Add button present in both empty and non-empty states; modal opens on click; submit calls the API client; server errors surface |
 | E2E | Empty dashboard → click Add → enter PAN and DOB → save → tax user section appears |
 
@@ -185,6 +203,7 @@ The E2E test is what proves issue #2's acceptance criteria, exercising the assem
 | `docs/fisqo-tech-design.md` | 160 | Remove "Aadhaar AES-256-GCM encrypted"; note that PAN carries the `UNIQUE` index |
 | `docs/fisqo-tech-design.md` | 292 | Replace AES-256-GCM claim with plain-text storage; state that the local SQLite file is the trust boundary |
 | `docs/fisqo-tech-design.md` | 16, 41 | "default browser" → Electron `BrowserWindow` |
+| `docs/fisqo-tech-design.md` | 295 | Add `Origin`/`Referer` and `Host` validation on state-changing requests; note that loopback binding alone does not prevent CSRF or DNS rebinding from the user's own browser |
 | `docs/fisqo-ux-design.md` | 15 | Aadhaar "(stored encrypted; ...)" → "(stored in plain text; last 4 digits shown in UI)" |
 | `docs/fisqo-ux-design.md` | 284 | Add the dashboard empty state to the Dashboard section, which currently describes only the populated view |
 | `CLAUDE.md` | Dev environment | Replace "No build/test commands exist yet - the project is pre-implementation" with the real commands |
