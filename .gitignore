@@ -25,6 +25,7 @@ docs/superpowers/plans/
 node_modules/
 dist/
 packages/core/src/generated/
+*.tsbuildinfo
 
 # Local databases
 *.db
