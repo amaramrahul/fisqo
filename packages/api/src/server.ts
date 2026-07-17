@@ -21,8 +21,13 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`Fisqo API listening on http://${HOST}:${PORT}`);
 });
 
+let shuttingDown = false;
+
 async function shutdown(): Promise<void> {
-  server.close();
+  if (shuttingDown) return;
+  shuttingDown = true;
+
+  await new Promise<void>((resolve) => server.close(() => resolve()));
   await prisma.$disconnect();
   process.exit(0);
 }
